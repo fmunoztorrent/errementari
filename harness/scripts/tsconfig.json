@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@open-supervisor/shared-types": ["packages/shared-types/src"]
+    }
+  },
+  "include": ["*.ts"]
+}

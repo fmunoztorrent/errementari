@@ -1,0 +1,88 @@
+# AGENTS.md — Instrucciones y Accionables por Agente
+
+Este archivo contiene instrucciones base y accionables para cada agente del pipeline. Los accionables bloqueantes (nivel 3) son generados automáticamente por `scripts/extract-learnings.ts` cuando un aprendizaje se repite 3 veces.
+
+---
+
+## Accionables bloqueantes (Nivel 3 — Auto-generados)
+
+| ID | Agente | Condición | Acción |
+|----|--------|-----------|--------|
+| *(vacío — se llena automáticamente cuando un slug alcanza 3 ocurrencias)* | | | |
+
+---
+
+## Agente `pipeline` (orquestador)
+
+**Responsable de:** coordinar el pipeline completo.
+
+### Accionables
+
+| ID | Accionable | Severidad |
+|----|-----------|-----------|
+| **A18** | Al iniciar cualquier paso del pipeline, verificar si Plan Mode está activo. Si lo está, anunciarlo EXPLÍCITAMENTE y preguntar si se debe salir | **ALTA** |
+| **A19** | Después de recibir un reporte de exploration agent, validar 1-2 claims clave con `read` o `git show` antes de diseñar arquitectura sobre ellas | **ALTA** |
+| **A20** | Después de que un task agent instala dependencias, ejecutar `git diff package.json` para ver exactamente qué cambió | **ALTA** |
+
+---
+
+## Agente `explore`
+
+**Responsable de:** leer y reportar el estado del código.
+
+### Accionables
+
+| ID | Accionable | Severidad |
+|----|-----------|-----------|
+| **A1** | Antes de reportar contenido de un archivo, ejecutar `git log --oneline -1 -- <file>` en la rama actual para confirmar que el archivo leído corresponde al HEAD | **ALTA** |
+| **A2** | Para verificar si una dependencia está instalada, consultar `package.json` directamente, nunca inferir de import statements o LSP | **MEDIA** |
+
+---
+
+## Agente `architect`
+
+**Responsable de:** validar viabilidad técnica antes de implementar.
+
+### Accionables
+
+| ID | Accionable | Severidad |
+|----|-----------|-----------|
+| **A4** | Para toda dependencia nativa nueva, verificar compatibilidad con la versión de Kotlin/Gradle del proyecto | **ALTA** |
+| **A5** | Validar rutas de endpoints contra los `@Controller()` prefixes reales del código | **ALTA** |
+
+---
+
+## Agente `qa`
+
+**Responsable de:** escribir tests en rojo y validar en verde.
+
+### Accionables
+
+| ID | Accionable | Severidad |
+|----|-----------|-----------|
+| **A8** | En fase GREEN, verificar que los endpoints nuevos responden con `curl -s -o /dev/null -w "%{http_code}"` ANTES de marcar como passing | **ALTA** |
+
+---
+
+## Agente `backend` y `frontend`
+
+**Responsable de:** escribir código que hace pasar los tests.
+
+### Accionables
+
+| ID | Accionable | Severidad |
+|----|-----------|-----------|
+| **A13** | Antes de `npm install`, verificar en `package.json` si la dependencia ya existe. Si existe, NO reinstalar con versión diferente | **ALTA** |
+| **A14** | NUNCA simplificar o reemplazar archivos existentes que no están en el scope de la tarea. Usar edición mínima con `edit`, no `write` completo | **ALTA** |
+
+---
+
+## Referencia cruzada agentes → accionables
+
+| Agente | Accionables asignados |
+|---|---|
+| explore | A1, A2 |
+| architect | A4, A5 |
+| qa | A8 |
+| backend / frontend | A13, A14 |
+| pipeline (orquestador) | A18, A19, A20 |

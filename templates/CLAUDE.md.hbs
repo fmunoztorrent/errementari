@@ -1,0 +1,198 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **⚠️ PIPELINE ENFORCEMENT ACTIVO (opencode):** El plugin `pipeline-enforcer` bloquea cualquier edición de archivos (`edit`/`write`) hasta que se inicie el pipeline con `todowrite`. Si ves el error del plugin, ejecuta primero `todowrite` con los 6 pasos del pipeline. No intentes editar archivos sin pipeline — será bloqueado mecánicamente.
+>
+> **Claude Code:** El `pre-command` hook y el `git pre-commit hook` también verifican el estado del pipeline. No puedes commitear sin pipeline cerrado.
+
+## Proyecto
+
+**{{name}}** — {{description}}
+
+## Codebase map
+
+| Directorio | Propósito |
+|---|---|
+{{#if monorepo}}
+{{#each workspaceDirs}}
+| `{{path}}/` | {{description}} |
+{{/each}}
+{{else}}
+| `src/` | Código fuente principal |
+| `tests/` | Tests |
+{{/if}}
+
+## Stack
+
+| Capa | Tecnología |
+|---|---|
+{{#if isNode}}
+{{#if (eq packageManager "pnpm")}}
+| Package manager | pnpm {{#if monorepo}}(workspaces){{/if}} |
+{{/if}}
+{{#if (eq packageManager "npm")}}
+| Package manager | npm {{#if monorepo}}(workspaces){{/if}} |
+{{/if}}
+{{#if (eq packageManager "yarn")}}
+| Package manager | Yarn {{#if monorepo}}(workspaces){{/if}} |
+{{/if}}
+{{#if backendFramework}}
+| Backend | {{backendFramework}} + {{#if isTypeScript}}TypeScript{{else}}JavaScript{{/if}} |
+{{/if}}
+{{#if frontendFramework}}
+| Frontend | {{frontendFramework}} + {{#if isTypeScript}}TypeScript{{else}}JavaScript{{/if}} |
+{{/if}}
+| Runtime | Node.js |
+{{/if}}
+{{#if isPython}}
+{{#if (eq packageManager "poetry")}}
+| Package manager | Poetry |
+{{/if}}
+{{#if (eq packageManager "pip")}}
+| Package manager | pip |
+{{/if}}
+{{#if (eq packageManager "uv")}}
+| Package manager | uv |
+{{/if}}
+{{#if backendFramework}}
+| Backend | {{backendFramework}} (Python) |
+{{/if}}
+{{#if frontendFramework}}
+| Frontend | {{frontendFramework}} |
+{{/if}}
+| Runtime | Python |
+{{/if}}
+{{#if isGo}}
+| Backend | Go {{#if backendFramework}}({{backendFramework}}){{/if}} |
+| Package manager | Go modules |
+{{/if}}
+{{#if usesKafka}}
+| Mensajería | Kafka |
+{{/if}}
+{{#if usesRedis}}
+| Cache / PubSub | Redis |
+{{/if}}
+{{#if usesSSE}}
+| Notificaciones realtime | Server-Sent Events (SSE) |
+{{/if}}
+
+## Arquitectura
+
+{{#if monorepo}}
+Monorepo {{packageManager}} workspaces.
+{{/if}}
+
+{{#if usesHexagonalArchitecture}}
+### Hexagonal Architecture (Ports & Adapters)
+
+**Regla no negociable:** el dominio de cada servicio define ports (interfaces). La infraestructura implementa adapters. Ningún use-case importa SDKs de infraestructura directamente.
+
+```
+domain/
+  entities/        # Entidades puras de dominio
+  ports/           # Interfaces (IMessagePublisher, IRepository, etc.)
+  use-cases/       # Lógica de negocio — depende solo de ports
+
+application/       # Orquesta use-cases
+
+infrastructure/
+  messaging/       # Adapters de mensajería
+  persistence/     # Adapters de persistencia
+```
+{{/if}}
+
+## Comandos
+
+```bash
+# Tests
+{{testCommand}}
+
+# Build
+{{#if buildCommand}}{{buildCommand}}
+{{/if}}
+# Lint
+{{#if lintCommand}}{{lintCommand}}
+{{/if}}
+# Typecheck
+{{#if typecheckCommand}}{{typecheckCommand}}
+{{/if}}
+```
+
+## Pipeline de desarrollo
+
+### Pipeline feature (6 pasos)
+
+```
+0. pre-spec               → leer .opencode/pipeline/start.md y ejecutar:
+                              bash .opencode/pipeline/pre-spec.sh
+                           Si falla: resolver issues antes de continuar.
+                           Crear rama desde origin/main:
+                              git checkout -b feature/<slug> origin/main
+1. /spec-generator        → spec formal en spec/ con REASONS Canvas (XML)
+2. architect agent        → valida viabilidad técnica, enriquece paths y escenarios de test
+3. qa agent (RED)         → escribe tests que fallan por la razón correcta
+4. backend / frontend     → implementa hasta que los tests pasen en verde
+5. qa agent (GREEN)       → corre la suite completa y reporta
+6. cierre                 → leer .opencode/pipeline/close.md y ejecutar todos los pasos
+```
+
+### Pipeline bugfix (pasos simplificados)
+
+```
+0. pre-spec               → bash .opencode/pipeline/pre-spec.sh
+                           Crear rama: git checkout -b fix/<slug> origin/main
+1. triage                → confirmar el bug, recolectar evidencias
+2. reproducir            → escribir test que reproduzca el bug (falla en rojo)
+3. architect (opcional)  → si el fix requiere cambios arquitecturales
+4. fix                   → implementar la corrección
+5. verify                → correr suite completa + typecheck
+6. cierre                → leer .opencode/pipeline/close.md y ejecutar instrucciones
+```
+
+### Git workflow
+
+| Tipo de tarea | Branch desde | Convención de nombre | PR (remoto) |
+|---|---|---|---|
+| `feature` | `main` | `feature/<slug>` | PR → `main` |
+| `bugfix` | `main` | `fix/<slug>` | PR → `main` |
+| `chore` | `main` | `chore/<slug>` | PR → `main` |
+
+- **`dev` es permanente:** nunca se elimina. Es la rama de integración perpetua.
+- Al cerrar un scope, la rama se fusiona a `dev` local.
+- PRs apuntan a `main`, no a `dev`.
+
+## Validaciones automáticas
+
+El harness bloquea mecánicamente la introducción de hardcodeos en tres niveles:
+
+| Nivel | Mecanismo | Cuándo |
+|---|---|---|
+| 1 | Plugin opencode | En tiempo real al ejecutar `edit`/`write` |
+| 2 | Git pre-commit hook | Antes de `git commit` |
+| 3 | Script standalone | Manual o CI |
+
+## Convenciones
+
+- **Specs primero**: toda feature arranca con un spec en `spec/`
+- **TDD**: QA escribe tests en rojo antes de que el implementador escriba código
+- **Idioma**: specs en inglés. Código y comentarios en inglés. Conversación con el usuario en su idioma.
+- **LEARNINGS.md**: aprendizajes se registran en `.claude/LEARNINGS.md`
+
+## Automejora (learnings)
+
+Skills de learnings por agente: `qa-learnings`, `backend-learnings`, `frontend-learnings`, `architect-learnings`. Se actualizan automáticamente al cierre de cada tarea vía `scripts/extract-learnings.ts`.
+
+## Agentes
+
+| Agente | Rol | Cuándo |
+|---|---|---|
+| `pipeline` | Orquestador principal | Default agent |
+| `spec` | Escritor de specs | Paso 1 |
+| `architect` | Validador técnico | Paso 2 |
+| `qa` | QA (RED + GREEN) | Pasos 3 y 5 |
+| `backend` | Backend implementer | Paso 4 |
+{{#if hasFrontend}}
+| `frontend` | Frontend implementer | Paso 4 |
+{{/if}}
+| `explore` | Exploración de código | Búsquedas y análisis |

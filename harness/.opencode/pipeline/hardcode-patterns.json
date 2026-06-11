@@ -1,0 +1,32 @@
+{
+  "$description": "Patrones de hardcodeo prohibidos en el repositorio. Usado por validate-hardcodes.sh y pipeline-enforcer.js. Mantener sincronizado con CLAUDE.md §Validaciones automáticas.",
+  "patterns": [
+    {
+      "id": "absolute-user-path",
+      "description": "Ruta absoluta de usuario (no portable entre máquinas)",
+      "regex": "/Users/[A-Za-z0-9_]+|/home/[A-Za-z0-9_]+|C:\\\\Users\\\\[A-Za-z0-9_]+",
+      "suggestion": "Usá rutas relativas, $HOME, o $(git rev-parse --show-toplevel)"
+    },
+    {
+      "id": "hardcoded-socket",
+      "description": "Socket de Docker/Podman hardcodeado sin variable",
+      "regex": "DOCKER_HOST=unix://",
+      "suggestion": "Usá el Makefile (make infra) o detección dinámica con $COMPOSE"
+    },
+    {
+      "id": "container-name-prefix",
+      "description": "Nombre de contenedor con prefijo de proyecto (frágil si cambia el dir)",
+      "regex": "{{PROJECT_SLUG}}-[a-z]+-[0-9]+",
+      "suggestion": "Usá $COMPOSE exec <servicio> en lugar del nombre de contenedor"
+    }
+  ],
+  "allowlist": {
+    "files": [
+      ".claude/settings.local.json",
+      ".opencode/pipeline/hardcode-patterns.json"
+    ],
+    "comments": [
+      "# hardcode-ok:"
+    ]
+  }
+}

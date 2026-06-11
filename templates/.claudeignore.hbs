@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.pnpm-store/
+coverage/
+*.generated.ts
+spec/archived/
+.git/
+{{#if hasFrontend}}
+{{#if (eq frontendFramework "react-native")}}
+android/app/build/
+ios/build/
+{{/if}}
+{{/if}}
