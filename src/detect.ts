@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import type { ExistingHarness, HarnessFile, ProjectContext } from "./types.js";
 
 function safeReadJSON(path: string): Record<string, unknown> | null {
@@ -367,7 +367,29 @@ export function detect(root: string): ProjectContext {
     usesVite,
     usesBDD,
     permCommands: [...new Set(permCommands)],
+    selectedCLIs: ["claude", "opencode"],
   };
+}
+
+const SUPPORTED_CLIS = [
+  { id: "claude", name: "Claude Code", cmd: "claude" },
+  { id: "opencode", name: "OpenCode", cmd: "opencode" },
+];
+
+function onPath(cmd: string): boolean {
+  for (const dir of (process.env.PATH || "").split(delimiter)) {
+    if (!dir) continue;
+    try {
+      if (existsSync(join(dir, cmd))) return true;
+    } catch {
+      // Permission error on a dir — skip
+    }
+  }
+  return false;
+}
+
+export function detectAvailableCLIs(): Array<{ id: string; name: string; found: boolean }> {
+  return SUPPORTED_CLIS.map((c) => ({ ...c, found: onPath(c.cmd) }));
 }
 
 const ERREMENTARI_AGENTS = ["pipeline", "spec", "architect", "backend", "qa", "frontend"];

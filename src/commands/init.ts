@@ -2,7 +2,7 @@ import { execSync } from "child_process";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join, relative, resolve } from "path";
 import prompts from "prompts";
-import { detect, detectExistingHarness } from "../detect.js";
+import { detect, detectAvailableCLIs, detectExistingHarness } from "../detect.js";
 import { backupFile, extractSections, generateSummary, mergeClaudeMd } from "../reconcile.js";
 import {
   fileHash,
@@ -89,6 +89,38 @@ export async function initCommand(
   console.log(`    Docker:      ${ctx.hasDocker ? "yes" : "no"}`);
   console.log("");
 
+  // ── Select AI coding CLIs ────────────────────────────────────────────────
+  const available = detectAvailableCLIs();
+  const detectedIds = available.filter((c) => c.found).map((c) => c.id);
+  const cliDefaults = detectedIds.length > 0 ? detectedIds : ["claude", "opencode"];
+
+  if (autoConfirm) {
+    ctx.selectedCLIs = cliDefaults;
+    console.log(`  CLIs: ${ctx.selectedCLIs.join(", ")} (auto-detected)`);
+    console.log("");
+  } else {
+    const cliResponse = await prompts({
+      type: "multiselect",
+      name: "clis",
+      message: "Select AI coding CLIs to install support for",
+      choices: available.map((c) => ({
+        title: c.found ? `${c.name} (detected)` : c.name,
+        value: c.id,
+        selected: c.found,
+      })),
+      min: 1,
+      hint: "- Space to select. Enter to confirm",
+    });
+
+    if (!cliResponse.clis || cliResponse.clis.length === 0) {
+      console.log("  Cancelled: at least one CLI must be selected.");
+      return;
+    }
+
+    ctx.selectedCLIs = cliResponse.clis;
+    console.log("");
+  }
+
   // ── Detect existing harness files ───────────────────────────────────────
   const existingFiles = detectExistingHarness(target);
 
@@ -100,8 +132,10 @@ export async function initCommand(
     }
     const mappings = getTemplateMappings(ctx);
     const wrapperCount = 6; // pipeline wrappers
-    const staticCount = 2;  // .opencode/package.json + .gitignore
-    console.log(`  [dry-run] Would install ${mappings.length + staticCount + wrapperCount + 1} items:`);
+    const staticCount = 2; // .opencode/package.json + .gitignore
+    console.log(
+      `  [dry-run] Would install ${mappings.length + staticCount + wrapperCount + 1} items:`,
+    );
     console.log(`    + .opencode/pipeline/* (${wrapperCount} wrappers → plugin)`);
     console.log(`    + .opencode/package.json + .gitignore (plugin deps)`);
     for (const m of mappings) console.log(`    + ${m.target} (${m.type})`);
@@ -308,9 +342,13 @@ export async function initCommand(
   console.log("═══════════════════════════════════════════");
   console.log("  Next steps:");
   console.log("  1. Review CLAUDE.md — adjust project-specific sections");
-  console.log("  2. Review .claude/settings.json — adjust permissions");
-  console.log("  3. For OpenCode: the plugin loads from .opencode/node_modules/");
-  console.log("  4. For Claude Code: claude plugin install github.com/fmunoztorrent/errementari");
+  if (ctx.selectedCLIs.includes("claude")) {
+    console.log("  2. Review .claude/settings.json — adjust permissions");
+    console.log("  3. For Claude Code: claude plugin install github.com/fmunoztorrent/errementari");
+  }
+  if (ctx.selectedCLIs.includes("opencode")) {
+    console.log("  4. For OpenCode: the plugin loads from .opencode/node_modules/");
+  }
   console.log("  5. Start a pipeline: /task 'your first feature'");
   console.log("     SPDD+SDD+BDD+TDD: analysis → Canvas → RED → GREEN → close");
   console.log("═══════════════════════════════════════════");

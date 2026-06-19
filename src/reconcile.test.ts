@@ -161,6 +161,7 @@ function makeFakeCtx(): ProjectContext {
     usesVite: true,
     usesBDD: false,
     permCommands: ["pnpm test", "pnpm lint", "pnpm typecheck"],
+    selectedCLIs: ["claude", "opencode"],
   };
 }
 

@@ -17,7 +17,8 @@ const program = new Command();
 program
   .name("errementari")
   .description("Dual-tool (Claude Code + opencode) development pipeline harness")
-  .version(pkg.version);
+  .version(pkg.version)
+  .enablePositionalOptions();
 
 program
   .command("init")

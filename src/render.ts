@@ -71,20 +71,43 @@ export interface TemplateMapping {
 }
 
 export function getTemplateMappings(ctx: ProjectContext): TemplateMapping[] {
-  const mappings: TemplateMapping[] = [
-    { template: "CLAUDE.md.hbs", target: "CLAUDE.md", type: "template" },
-    { template: "opencode.json.hbs", target: "opencode.json", type: "template" },
-    { template: "settings.json.hbs", target: ".claude/settings.json", type: "template" },
-    { template: ".claudeignore.hbs", target: ".claudeignore", type: "template" },
-    { template: "AGENTS.md.hbs", target: ".claude/AGENTS.md", type: "template" },
-    { template: "LEARNINGS.md.stub", target: ".claude/LEARNINGS.md", type: "stub" },
-    // Rendered (not generic): the container-name pattern embeds the project slug
-    {
-      template: "hardcode-patterns.json.hbs",
-      target: ".opencode/pipeline/hardcode-patterns.json",
+  const sel = (cli: string) => ctx.selectedCLIs.includes(cli);
+  const mappings: TemplateMapping[] = [];
+
+  // CLAUDE.md — always (both CLIs need it as instruction file)
+  mappings.push({ template: "CLAUDE.md.hbs", target: "CLAUDE.md", type: "template" });
+
+  // opencode.json — only if OpenCode selected
+  if (sel("opencode")) {
+    mappings.push({ template: "opencode.json.hbs", target: "opencode.json", type: "template" });
+  }
+
+  // Claude Code-specific files
+  if (sel("claude")) {
+    mappings.push({
+      template: "settings.json.hbs",
+      target: ".claude/settings.json",
       type: "template",
+    });
+    mappings.push({ template: ".claudeignore.hbs", target: ".claudeignore", type: "template" });
+    mappings.push({ template: "AGENTS.md.hbs", target: ".claude/AGENTS.md", type: "template" });
+    mappings.push({ template: "LEARNINGS.md.stub", target: ".claude/LEARNINGS.md", type: "stub" });
+  }
+
+  // Rendered (not generic): the container-name pattern embeds the project slug
+  mappings.push({
+    template: "hardcode-patterns.json.hbs",
+    target: ".opencode/pipeline/hardcode-patterns.json",
+    type: "template",
+  });
+
+  // Skills — always (OpenCode references .claude/skills via skills.paths)
+  mappings.push(
+    {
+      template: "skills/errementari/SKILL.md",
+      target: ".claude/skills/errementari/SKILL.md",
+      type: "stub",
     },
-    // Learnings skills
     {
       template: "skills/qa-learnings/SKILL.md",
       target: ".claude/skills/qa-learnings/SKILL.md",
@@ -100,9 +123,9 @@ export function getTemplateMappings(ctx: ProjectContext): TemplateMapping[] {
       target: ".claude/skills/architect-learnings/SKILL.md",
       type: "stub",
     },
-  ];
+  );
 
-  // Agent definitions, rendered for both tools
+  // Agent definitions, conditional per CLI
   const agents: Array<{ name: string; type: TemplateMapping["type"] }> = [
     { name: "pipeline", type: "static" },
     { name: "spec", type: "template" },
@@ -121,10 +144,12 @@ export function getTemplateMappings(ctx: ProjectContext): TemplateMapping[] {
   for (const agent of agents) {
     const template =
       agent.type === "static" ? `agents/${agent.name}.md` : `agents/${agent.name}.md.hbs`;
-    mappings.push(
-      { template, target: `.opencode/agents/${agent.name}.md`, type: agent.type },
-      { template, target: `.claude/agents/${agent.name}.md`, type: agent.type },
-    );
+    if (sel("opencode")) {
+      mappings.push({ template, target: `.opencode/agents/${agent.name}.md`, type: agent.type });
+    }
+    if (sel("claude")) {
+      mappings.push({ template, target: `.claude/agents/${agent.name}.md`, type: agent.type });
+    }
   }
 
   return mappings;
@@ -261,7 +286,11 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
     { dest: "check.sh", content: wrapperScript("pipeline/check.sh"), mode: 0o755 },
     { dest: "merge-to-dev.sh", content: wrapperScript("pipeline/merge-to-dev.sh"), mode: 0o755 },
     { dest: "coordination.sh", content: wrapperScript("pipeline/coordination.sh"), mode: 0o755 },
-    { dest: "coordination-claude-hook.sh", content: wrapperScript("pipeline/coordination-claude-hook.sh"), mode: 0o755 },
+    {
+      dest: "coordination-claude-hook.sh",
+      content: wrapperScript("pipeline/coordination-claude-hook.sh"),
+      mode: 0o755,
+    },
     { dest: "pre-commit", content: wrapperScript("pipeline/pre-commit"), mode: 0o755 },
   ];
 
@@ -293,19 +322,26 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
 
   // opencode npm deps: pull errementari as dependency
   const opencodePkgPath = join(opencodeDir, "package.json");
-  const opencodePkgContent = JSON.stringify({
-    name: "opencode-plugins",
-    private: true,
-    type: "module",
-    dependencies: { errementari: `^${version}` },
-  }, null, 2) + "\n";
+  const opencodePkgContent =
+    JSON.stringify(
+      {
+        name: "opencode-plugins",
+        private: true,
+        type: "module",
+        dependencies: { errementari: `^${version}` },
+      },
+      null,
+      2,
+    ) + "\n";
   const opencodePkgHash = fileHash(opencodePkgContent);
   if (!existsSync(opencodePkgPath)) {
     writeFileSync(opencodePkgPath, opencodePkgContent);
   }
   manifest.files[".opencode/package.json"] = {
     type: "static",
-    hash: existsSync(opencodePkgPath) ? fileHash(readFileSync(opencodePkgPath, "utf-8")) : opencodePkgHash,
+    hash: existsSync(opencodePkgPath)
+      ? fileHash(readFileSync(opencodePkgPath, "utf-8"))
+      : opencodePkgHash,
     originalHash: opencodePkgHash,
   };
 
@@ -318,7 +354,9 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
   }
   manifest.files[".opencode/.gitignore"] = {
     type: "static",
-    hash: existsSync(gitignorePath) ? fileHash(readFileSync(gitignorePath, "utf-8")) : gitignoreHash,
+    hash: existsSync(gitignorePath)
+      ? fileHash(readFileSync(gitignorePath, "utf-8"))
+      : gitignoreHash,
     originalHash: gitignoreHash,
   };
 
@@ -355,43 +393,53 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
   }
 
   // ── Sync agents from plugin to project ───────────────────────────────────
-  // Copy canonical plugin agents into .claude/agents/ and .opencode/agents/
+  // Copy canonical plugin agents into .claude/agents/ and .opencode/agents/,
+  // but only for the CLIs the user selected.
   const pluginAgentsDir = join(rootDir(), "agents");
   if (existsSync(pluginAgentsDir)) {
-    const projectClaudeAgents = join(targetRoot, ".claude", "agents");
-    const projectOpencodeAgents = join(targetRoot, ".opencode", "agents");
-    if (!existsSync(projectClaudeAgents)) mkdirSync(projectClaudeAgents, { recursive: true });
-    if (!existsSync(projectOpencodeAgents)) mkdirSync(projectOpencodeAgents, { recursive: true });
+    if (ctx.selectedCLIs.includes("claude")) {
+      const projectClaudeAgents = join(targetRoot, ".claude", "agents");
+      if (!existsSync(projectClaudeAgents)) mkdirSync(projectClaudeAgents, { recursive: true });
 
-    for (const entry of readdirSync(pluginAgentsDir)) {
-      if (!entry.endsWith(".md")) continue;
-      const agentName = basename(entry, ".md");
-      const body = readFileSync(join(pluginAgentsDir, entry), "utf-8");
+      for (const entry of readdirSync(pluginAgentsDir)) {
+        if (!entry.endsWith(".md")) continue;
+        const agentName = basename(entry, ".md");
+        const body = readFileSync(join(pluginAgentsDir, entry), "utf-8");
 
-      // Claude Code agent: add frontmatter
-      const ccFrontmatter = generateClaudeCodeFrontmatter(agentName);
-      const ccContent = ccFrontmatter + body;
-      const ccPath = join(projectClaudeAgents, entry);
-      if (!existsSync(ccPath)) writeFileSync(ccPath, ccContent);
-      const ccRel = `.claude/agents/${entry}`;
-      manifest.files[ccRel] = {
-        type: "generic",
-        version,
-        hash: existsSync(ccPath) ? fileHash(readFileSync(ccPath, "utf-8")) : fileHash(ccContent),
-        originalHash: fileHash(ccContent),
-      };
-
-      // OpenCode agent: just the body (no frontmatter needed, config provides context)
-      const ocPath = join(projectOpencodeAgents, entry);
-      if (!existsSync(ocPath)) writeFileSync(ocPath, body);
-      const ocRel = `.opencode/agents/${entry}`;
-      manifest.files[ocRel] = {
-        type: "generic",
-        version,
-        hash: existsSync(ocPath) ? fileHash(readFileSync(ocPath, "utf-8")) : fileHash(body),
-        originalHash: fileHash(body),
-      };
+        const ccFrontmatter = generateClaudeCodeFrontmatter(agentName);
+        const ccContent = ccFrontmatter + body;
+        const ccPath = join(projectClaudeAgents, entry);
+        if (!existsSync(ccPath)) writeFileSync(ccPath, ccContent);
+        const ccRel = `.claude/agents/${entry}`;
+        manifest.files[ccRel] = {
+          type: "generic",
+          version,
+          hash: existsSync(ccPath) ? fileHash(readFileSync(ccPath, "utf-8")) : fileHash(ccContent),
+          originalHash: fileHash(ccContent),
+        };
+      }
     }
+
+    if (ctx.selectedCLIs.includes("opencode")) {
+      const projectOpencodeAgents = join(targetRoot, ".opencode", "agents");
+      if (!existsSync(projectOpencodeAgents)) mkdirSync(projectOpencodeAgents, { recursive: true });
+
+      for (const entry of readdirSync(pluginAgentsDir)) {
+        if (!entry.endsWith(".md")) continue;
+        const body = readFileSync(join(pluginAgentsDir, entry), "utf-8");
+
+        const ocPath = join(projectOpencodeAgents, entry);
+        if (!existsSync(ocPath)) writeFileSync(ocPath, body);
+        const ocRel = `.opencode/agents/${entry}`;
+        manifest.files[ocRel] = {
+          type: "generic",
+          version,
+          hash: existsSync(ocPath) ? fileHash(readFileSync(ocPath, "utf-8")) : fileHash(body),
+          originalHash: fileHash(body),
+        };
+      }
+    }
+
     console.log(`  ✓ Synced plugin agents to project`);
   }
 

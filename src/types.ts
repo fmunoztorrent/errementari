@@ -38,6 +38,8 @@ export interface ProjectContext {
   usesBDD: boolean;
 
   permCommands: string[];
+
+  selectedCLIs: string[];
 }
 
 export interface ManifestEntry {
