@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, join } from "path";
-import type { ProjectContext } from "./types.js";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
+import type { ExistingHarness, HarnessFile, ProjectContext } from "./types.js";
 
 function safeReadJSON(path: string): Record<string, unknown> | null {
   try {
@@ -112,7 +112,7 @@ export function detect(root: string): ProjectContext {
 
   // ── Monorepo ─────────────────────────────────────────────────────────────
   let monorepo = false;
-  const workspaceDirs: Array<{ path: string; description: string }> = [];
+  const workspaceDirs: Array<{ path: string; description: string; name: string }> = [];
   const workspacePkgs: Array<Record<string, unknown>> = [];
 
   let workspacePatterns: string[] = [];
@@ -140,6 +140,8 @@ export function detect(root: string): ProjectContext {
             workspaceDirs.push({
               path: `${base}/${e}`,
               description: (subPkg?.description as string) || e,
+              // Package name, not dir name: pnpm/yarn/bun filter by name
+              name: (subPkg?.name as string) || e,
             });
           }
         } catch {
@@ -184,7 +186,7 @@ export function detect(root: string): ProjectContext {
     }
 
     // Frontend detection
-    if (allDeps["react-native"] || allDeps["expo"]) {
+    if (allDeps["react-native"] || allDeps.expo) {
       frontendFramework = "react-native";
       hasFrontend = true;
     } else if (allDeps.react) {
@@ -198,11 +200,12 @@ export function detect(root: string): ProjectContext {
       hasFrontend = true;
     }
 
-    // Services from monorepo
+    // Services from monorepo — workspace package names, usable as
+    // pnpm --filter / yarn workspace / npm --workspace targets
     if (monorepo && workspaceDirs.length > 0) {
       for (const dir of workspaceDirs) {
         if (dir.path.startsWith("apps/")) {
-          services.push(dir.path.replace("apps/", ""));
+          services.push(dir.name);
         }
       }
       frontendAppPath = workspaceDirs.find(
@@ -236,9 +239,25 @@ export function detect(root: string): ProjectContext {
     !!(isPython && pyproject?.includes("sse-starlette"));
   const hasDocker =
     existsSync(join(root, "docker-compose.yml")) || existsSync(join(root, "Dockerfile"));
+  const hasFirebase =
+    existsSync(join(root, "firebase.json")) || existsSync(join(root, ".firebaserc"));
+  const usesVite =
+    isNode &&
+    (existsSync(join(root, "vite.config.ts")) || existsSync(join(root, "vite.config.js")));
 
   const usesHexagonalArchitecture =
     existsSync(join(root, "domain")) && existsSync(join(root, "infrastructure"));
+
+  const usesBDD =
+    isNode &&
+    (findInDeps(pkg || {}, [
+      "jest-cucumber",
+      "@cucumber/cucumber",
+      "cucumber",
+      "gherkin-testcafe",
+    ]) ||
+      existsSync(join(root, "tests", "features")) ||
+      existsSync(join(root, "features")));
 
   // ── Commands ─────────────────────────────────────────────────────────────
   let testCommand = "npm test";
@@ -265,10 +284,10 @@ export function detect(root: string): ProjectContext {
         testCommand = "npx vitest run";
       }
       const scripts = (pkg?.scripts || {}) as Record<string, string>;
-      if (scripts["test"]) testCommand = `${pm} test`;
-      if (scripts["build"]) buildCommand = `${pm} run build`;
-      if (scripts["lint"]) lintCommand = `${pm} run lint`;
-      if (scripts["typecheck"]) typecheckCommand = `${pm} run typecheck`;
+      if (scripts.test) testCommand = `${pm} test`;
+      if (scripts.build) buildCommand = `${pm} run build`;
+      if (scripts.lint) lintCommand = `${pm} run lint`;
+      if (scripts.typecheck) typecheckCommand = `${pm} run typecheck`;
     }
   } else if (isPython) {
     testCommand =
@@ -311,8 +330,10 @@ export function detect(root: string): ProjectContext {
   permCommands.push(testCommand);
   permCommands.push(lintCommand);
   permCommands.push(typecheckCommand);
-  if (isNode && pkg && findInDeps(pkg, ["jest"])) permCommands.push("npx jest *");
-  if (isNode && pkg && findInDeps(pkg, ["vitest"])) permCommands.push("npx vitest *");
+  // Bare commands: the settings template appends ":*" (prefix match), so a
+  // glob here would render as "npx jest *:*" and never match.
+  if (isNode && pkg && findInDeps(pkg, ["jest"])) permCommands.push("npx jest");
+  if (isNode && pkg && findInDeps(pkg, ["vitest"])) permCommands.push("npx vitest");
 
   return {
     name,
@@ -342,6 +363,235 @@ export function detect(root: string): ProjectContext {
     usesRedis,
     usesSSE,
     hasDocker,
-    permCommands,
+    hasFirebase,
+    usesVite,
+    usesBDD,
+    permCommands: [...new Set(permCommands)],
+  };
+}
+
+const ERREMENTARI_AGENTS = ["pipeline", "spec", "architect", "backend", "qa", "frontend"];
+
+function listDirSafe(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+function isNonEmptyFile(path: string): boolean {
+  try {
+    return statSync(path).isFile() && readFileSync(path, "utf-8").length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function detectExistingHarness(root: string): ExistingHarness {
+  const files: HarnessFile[] = [];
+  const customAgents: string[] = [];
+  const harnessAgents: string[] = [];
+
+  const hasClaudeMd = existsSync(join(root, "CLAUDE.md"));
+  const hasClaudeIgnore = existsSync(join(root, ".claudeignore"));
+  const hasOpencodeDir = existsSync(join(root, ".opencode"));
+  const hasClaudeDir = existsSync(join(root, ".claude"));
+  const hasSettingsJson = existsSync(join(root, ".claude", "settings.json"));
+  const hasSettingsLocalJson = existsSync(join(root, ".claude", "settings.local.json"));
+
+  if (hasClaudeMd) {
+    files.push({
+      path: "CLAUDE.md",
+      category: "harness-owned",
+      matchesTemplate: "CLAUDE.md.hbs",
+      hasContent: isNonEmptyFile(join(root, "CLAUDE.md")),
+    });
+  }
+
+  if (hasClaudeIgnore) {
+    files.push({
+      path: ".claudeignore",
+      category: "harness-owned",
+      matchesTemplate: ".claudeignore.hbs",
+      hasContent: isNonEmptyFile(join(root, ".claudeignore")),
+    });
+  }
+
+  if (hasSettingsJson) {
+    files.push({
+      path: ".claude/settings.json",
+      category: "harness-owned",
+      matchesTemplate: "settings.json.hbs",
+      hasContent: true,
+    });
+  }
+
+  if (hasSettingsLocalJson) {
+    files.push({
+      path: ".claude/settings.local.json",
+      category: "custom",
+      hasContent: true,
+    });
+  }
+
+  const opencodeJsonPath = join(root, "opencode.json");
+  if (existsSync(opencodeJsonPath)) {
+    files.push({
+      path: "opencode.json",
+      category: "harness-owned",
+      matchesTemplate: "opencode.json.hbs",
+      hasContent: true,
+    });
+  }
+
+  if (hasClaudeDir) {
+    const agentsDir = join(root, ".claude", "agents");
+    if (existsSync(agentsDir)) {
+      for (const entry of listDirSafe(agentsDir)) {
+        if (!entry.endsWith(".md")) continue;
+        const agentName = entry.replace(/\.md$/, "");
+        const agentPath = `.claude/agents/${entry}`;
+
+        if (ERREMENTARI_AGENTS.includes(agentName)) {
+          harnessAgents.push(agentName);
+          files.push({
+            path: agentPath,
+            category: "harness-owned",
+            matchesTemplate: `agents/${agentName}.md.hbs`,
+            hasContent: isNonEmptyFile(join(root, agentPath)),
+          });
+        } else {
+          customAgents.push(agentName);
+          files.push({
+            path: agentPath,
+            category: "custom",
+            hasContent: isNonEmptyFile(join(root, agentPath)),
+          });
+        }
+      }
+    }
+
+    const learningsPath = join(root, ".claude", "LEARNINGS.md");
+    if (existsSync(learningsPath)) {
+      files.push({
+        path: ".claude/LEARNINGS.md",
+        category: "stub",
+        matchesTemplate: "LEARNINGS.md.stub",
+        hasContent: isNonEmptyFile(learningsPath),
+      });
+    }
+
+    const commandsDir = join(root, ".claude", "commands");
+    if (existsSync(commandsDir)) {
+      for (const entry of listDirSafe(commandsDir)) {
+        files.push({
+          path: `.claude/commands/${entry}`,
+          category: "harness-owned",
+          hasContent: true,
+        });
+      }
+    }
+
+    const skillsDir = join(root, ".claude", "skills");
+    if (existsSync(skillsDir)) {
+      function scanSkills(dir: string, prefix: string) {
+        for (const entry of listDirSafe(dir)) {
+          const full = join(dir, entry);
+          const rel = `${prefix}/${entry}`;
+          try {
+            if (statSync(full).isDirectory()) {
+              scanSkills(full, rel);
+            } else {
+              const isLearningsSkill = rel.includes("-learnings/");
+              files.push({
+                path: `.claude/${rel}`,
+                category: isLearningsSkill ? "stub" : "custom",
+                hasContent: isNonEmptyFile(full),
+              });
+            }
+          } catch {
+            // unreadable entry
+          }
+        }
+      }
+      scanSkills(skillsDir, "skills");
+    }
+
+    const settingsLocalDir = join(root, ".claude");
+    for (const entry of listDirSafe(settingsLocalDir)) {
+      const full = join(settingsLocalDir, entry);
+      if (
+        statSync(full).isFile() &&
+        entry !== "settings.json" &&
+        entry !== "LEARNINGS.md" &&
+        entry !== "AGENTS.md"
+      ) {
+        const _isAgentsMd = entry === "AGENTS.md";
+        const relDir = `claude/${entry}`;
+        if (
+          !files.some((f) => f.path === `.${relDir}`) &&
+          !entry.endsWith(".md") &&
+          entry !== "bootstrap-multiagentes.md"
+        ) {
+          // Skip other known file types
+        }
+        // Non-agent, non-standard files
+        const knownPatterns = ["settings", "LEARNINGS", "AGENTS"];
+        if (!knownPatterns.some((p) => entry.startsWith(p))) {
+          const isMdAgent = entry.endsWith(".md");
+          const _name = isMdAgent ? entry.replace(/\.md$/, "") : entry;
+          if (!files.some((f) => f.path === `.claude/${entry}`)) {
+            files.push({
+              path: `.claude/${entry}`,
+              category: "custom",
+              hasContent: true,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (hasOpencodeDir) {
+    const opencodeRoot = join(root, ".opencode");
+    function scanOpencode(dir: string, prefix: string) {
+      for (const entry of listDirSafe(dir)) {
+        const full = join(dir, entry);
+        const rel = prefix ? `${prefix}/${entry}` : entry;
+        try {
+          if (statSync(full).isDirectory()) {
+            scanOpencode(full, rel);
+          } else {
+            // Check if this is a harness-owned file
+            const harnessOwnedPatterns = ["pipeline/", "plugins/", "agents/", "coordination.json"];
+            const isHarnessOwned =
+              harnessOwnedPatterns.some((p) => rel.startsWith(p)) ||
+              rel === "package.json" ||
+              rel === ".gitignore";
+            files.push({
+              path: `.opencode/${rel}`,
+              category: isHarnessOwned ? "harness-owned" : "custom",
+              hasContent: isNonEmptyFile(full),
+            });
+          }
+        } catch {
+          // unreadable entry
+        }
+      }
+    }
+    scanOpencode(opencodeRoot, "");
+  }
+
+  return {
+    files,
+    hasClaudeMd,
+    hasOpencodeDir,
+    hasClaudeDir,
+    hasClaudeIgnore,
+    hasSettingsJson,
+    hasSettingsLocalJson,
+    customAgents,
+    harnessAgents,
   };
 }

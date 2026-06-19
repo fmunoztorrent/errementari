@@ -1,8 +1,8 @@
 import { execSync } from "child_process";
-import { existsSync, readdirSync, rmdirSync, rmSync } from "fs";
+import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync } from "fs";
 import { dirname, join, resolve } from "path";
 import prompts from "prompts";
-import { readManifest } from "../render.js";
+import { fileHash, readManifest } from "../render.js";
 
 function removeEmptyDirsUpward(dir: string, stopAt: string) {
   let current = dir;
@@ -35,7 +35,7 @@ export async function uninstallCommand(targetDir?: string, options?: { yes?: boo
     const { confirmed } = await prompts({
       type: "confirm",
       name: "confirmed",
-      message: "Remove the harness? (your code and specs are not touched)",
+      message: "Remove the harness? (your code, specs and files you modified are not touched)",
       initial: false,
     });
     if (!confirmed) {
@@ -45,14 +45,30 @@ export async function uninstallCommand(targetDir?: string, options?: { yes?: boo
   }
 
   let removed = 0;
+  const preserved: string[] = [];
   const dirs = new Set<string>();
   for (const rel of files) {
     const path = join(target, rel);
-    if (existsSync(path)) {
-      rmSync(path, { force: true });
-      removed++;
-      dirs.add(dirname(path));
+    if (!existsSync(path)) continue;
+
+    // Files the user modified since install (e.g. LEARNINGS.md with content,
+    // an edited CLAUDE.md) hold user data — preserve them instead of deleting.
+    const baseline = manifest.files[rel].originalHash || manifest.files[rel].hash;
+    if (baseline) {
+      try {
+        if (fileHash(readFileSync(path, "utf-8")) !== baseline) {
+          preserved.push(rel);
+          continue;
+        }
+      } catch {
+        preserved.push(rel);
+        continue;
+      }
     }
+
+    rmSync(path, { force: true });
+    removed++;
+    dirs.add(dirname(path));
   }
 
   // Runtime artifacts not tracked in the manifest
@@ -85,6 +101,13 @@ export async function uninstallCommand(targetDir?: string, options?: { yes?: boo
     } catch {
       // hooksPath was not set — nothing to restore
     }
+  }
+
+  if (preserved.length > 0) {
+    console.log(
+      `\n  Preserved ${preserved.length} file(s) you modified (delete manually if unwanted):`,
+    );
+    for (const f of preserved) console.log(`    - ${f}`);
   }
 
   console.log(`\nRemoved ${removed} files. Harness uninstalled.\n`);

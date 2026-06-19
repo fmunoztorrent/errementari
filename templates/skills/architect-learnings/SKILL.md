@@ -1,11 +1,11 @@
 ---
 name: architect-learnings
-description: Aprendizajes acumulados del architect. Cargar al iniciar tareas para aplicar lecciones de iteraciones anteriores.
+description: Accumulated learnings of the architect. Load when starting tasks to apply lessons from previous iterations.
 ---
 
-## Reglas activas (validadas >=2 veces)
+## Active rules (validated >=2 times)
 
-## Lecciones recientes
+## Recent lessons
 
-## Promovidas a CLAUDE.md
-*Entradas migradas a reglas permanentes en CLAUDE.md.*
+## Promoted to CLAUDE.md
+*Entries migrated to permanent rules in CLAUDE.md.*

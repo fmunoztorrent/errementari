@@ -29,7 +29,7 @@ your-project/
         ├── close.md           # pipeline close instructions
         ├── coordination.sh    # git-tree coordination between tools
         ├── coordination.json  # shared session state (gitignored)
-        ├── pre-commit.sh      # git hook: blocks commit if pipeline not closed
+        ├── pre-commit         # git hook: blocks commit if pipeline not closed
         ├── check.sh           # pipeline status check
         ├── pre-spec.sh        # pre-spec guard
         ├── merge-to-dev.sh
@@ -43,6 +43,10 @@ your-project/
 - Node.js ≥ 20
 - A project directory (with or without `.git`)
 - Optional: Claude Code and/or opencode CLI installed
+- Optional: a git remote (`origin`) — without one, the pre-spec checks that
+  compare against `origin/<main>` and query open PRs degrade to warnings
+  instead of blocking. Repos whose default branch is `master` (or anything
+  set in `origin/HEAD`) are detected automatically.
 
 ## Install
 
@@ -74,8 +78,8 @@ node /path/to/errementari/bin/cli.js <command>
 | `errementari upgrade --dry-run` | Preview what an upgrade would change without writing files. |
 | `errementari status [dir]` | Show installed version, install date, and a file-count breakdown. |
 | `errementari doctor [dir]` | Health check: manifest, missing files, JSON validity, git hooks, plugin deps. |
-| `errementari uninstall [dir]` | Remove every harness file via the manifest and restore `core.hooksPath`. |
-| `errementari` *(no args)* | Alias of `init`. |
+| `errementari uninstall [dir]` | Remove every harness file via the manifest and restore `core.hooksPath`. Files you modified are preserved. |
+| `errementari [dir]` *(no subcommand)* | Alias of `init [dir]`. Supports `-y` and `--dry-run`. |
 
 ### `init` — first install
 

@@ -1,0 +1,21 @@
+{
+  "agent": "pipeline",
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(tsc *)",
+      "Bash(tsx *)",
+      "Bash(bash .opencode/pipeline/*)",
+      "Bash(curl *)",
+      "WebFetch",
+      "mcp__context7__*",
+      "Skill(ponytail)",
+      "Skill(caveman)",
+      "Skill(find-skills)"
+    ]
+  }
+}

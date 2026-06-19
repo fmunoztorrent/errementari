@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "fs";
@@ -118,6 +119,33 @@ export async function upgradeCommand(targetDir?: string, options?: { dryRun?: bo
     `  ${dryRun ? "→ Would update" : "✓ Updated"} ${updatedGenerics} generic files` +
       (addedGenerics ? ` (+${addedGenerics} new)` : ""),
   );
+
+  // ── Remove generic files this version no longer ships ────────────────────
+  // (e.g. pre-commit.sh → pre-commit rename, hardcode-patterns.json → template).
+  // User-modified copies are kept and reported instead of deleted.
+  const harnessSet = new Set(harnessFiles);
+  const removedGenerics: string[] = [];
+  for (const [rel, entry] of Object.entries(manifest.files)) {
+    if (entry.type !== "generic" || harnessSet.has(rel)) continue;
+    const destPath = join(target, rel);
+    if (existsSync(destPath)) {
+      const currentHash = fileHash(readFileSync(destPath, "utf-8"));
+      const baseline = entry.originalHash || entry.hash;
+      if (baseline && currentHash !== baseline) {
+        modifiedGenerics.push(rel);
+        continue;
+      }
+      if (!dryRun) rmSync(destPath, { force: true });
+    }
+    removedGenerics.push(rel);
+    if (!dryRun) delete manifest.files[rel];
+  }
+  if (removedGenerics.length > 0) {
+    console.log(
+      `  ${dryRun ? "→ Would remove" : "✓ Removed"} ${removedGenerics.length} obsolete file(s):`,
+    );
+    for (const f of removedGenerics) console.log(`    - ${f}`);
+  }
 
   if (modifiedGenerics.length > 0) {
     console.log(

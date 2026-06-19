@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { join, resolve } from "path";
 import { readManifest, rootDir } from "../render.js";
 import { compareVersions } from "./upgrade.js";
@@ -66,6 +66,35 @@ export async function doctorCommand(targetDir?: string) {
     } catch (e) {
       bad(`${jsonFile} is NOT valid JSON: ${(e as Error).message}`);
     }
+  }
+
+  // ── Script interpreters (pipeline scripts parse JSON via python3 or node) ─
+  const hasInterpreter = (cmd: string): boolean => {
+    try {
+      execSync(`command -v ${cmd}`, { stdio: "pipe", shell: "/bin/sh" });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (hasInterpreter("python3") || hasInterpreter("node")) {
+    ok("python3 or node available for pipeline state checks");
+  } else {
+    warn("Neither python3 nor node found — pipeline state checks will be skipped");
+  }
+
+  // ── Pre-commit hook file ─────────────────────────────────────────────────
+  const hookPath = join(target, ".opencode", "pipeline", "pre-commit");
+  if (existsSync(hookPath)) {
+    try {
+      const mode = statSync(hookPath).mode;
+      if (mode & 0o111) ok("pre-commit hook present and executable");
+      else bad("pre-commit hook is not executable — run: chmod +x .opencode/pipeline/pre-commit");
+    } catch {
+      warn("Could not stat pre-commit hook");
+    }
+  } else if (manifest.files[".opencode/pipeline/pre-commit"]) {
+    bad("pre-commit hook missing — run 'errementari upgrade' to restore");
   }
 
   // ── Git hooks ────────────────────────────────────────────────────────────

@@ -1,13 +1,53 @@
+# Errementari harness — managed by errementari upgrade
+.opencode/pipeline/coordination.json
+
+# Dependencies
 node_modules/
-dist/
 .pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
 coverage/
-*.generated.ts
-spec/archived/
-.git/
-{{#if hasFrontend}}
+{{#if usesVite}}
+.vite/
+.vite-react-ssg-temp/
+{{/if}}
+{{#if isPython}}
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+{{/if}}
+{{#if isGo}}
+vendor/
+*.exe
+*.test
+{{/if}}
+{{#if hasFirebase}}
+.firebase/
+{{/if}}
+{{#if hasDocker}}
+.docker/
+{{/if}}
 {{#if (eq frontendFramework "react-native")}}
 android/app/build/
 ios/build/
 {{/if}}
-{{/if}}
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# OS & editor
+.DS_Store
+*.log
+*.generated.ts
+
+# Spec archive (managed by close pipeline)
+spec/archived/
+
+# Git
+.git/

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { compareVersions, upgradeCommand } from "./commands/upgrade.js";
@@ -138,6 +138,63 @@ test("upgrade refuses to downgrade", async () => {
     assert.ok(failed, "downgrade must set a failure exit code");
     assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf-8"), before);
     assert.equal(readManifest(root)!.version, "99.0.0");
+  } finally {
+    cleanup();
+  }
+});
+
+test("upgrade removes obsolete generic files no longer shipped", async () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    setupInstalledProject(root);
+    // Simulate a file installed by an older version that the harness dropped
+    // (e.g. the pre-commit.sh → pre-commit rename).
+    const stalePath = join(root, ".opencode", "pipeline", "pre-commit.sh");
+    const staleContent = "#!/bin/bash\necho old hook\n";
+    writeFileSync(stalePath, staleContent);
+    const manifest = readManifest(root)!;
+    const { createHash } = await import("node:crypto");
+    const hash = createHash("sha256").update(staleContent).digest("hex");
+    manifest.files[".opencode/pipeline/pre-commit.sh"] = {
+      type: "generic",
+      version: "0.9.0",
+      hash,
+      originalHash: hash,
+    };
+    manifest.version = "0.9.0";
+    writeJson(join(root, ".errementari.json"), manifest);
+
+    await upgradeCommand(root);
+
+    assert.ok(!existsSync(stalePath), "obsolete unmodified file must be removed");
+    assert.ok(
+      !(".opencode/pipeline/pre-commit.sh" in readManifest(root)!.files),
+      "manifest entry must be cleaned up",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("upgrade keeps obsolete generic files the user modified", async () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    setupInstalledProject(root);
+    const stalePath = join(root, ".opencode", "pipeline", "pre-commit.sh");
+    writeFileSync(stalePath, "#!/bin/bash\necho heavily customized\n");
+    const manifest = readManifest(root)!;
+    manifest.files[".opencode/pipeline/pre-commit.sh"] = {
+      type: "generic",
+      version: "0.9.0",
+      hash: "0".repeat(64), // baseline differs from disk → user-modified
+      originalHash: "0".repeat(64),
+    };
+    manifest.version = "0.9.0";
+    writeJson(join(root, ".errementari.json"), manifest);
+
+    await upgradeCommand(root);
+
+    assert.ok(existsSync(stalePath), "user-modified obsolete file must be preserved");
   } finally {
     cleanup();
   }

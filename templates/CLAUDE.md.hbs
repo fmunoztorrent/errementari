@@ -2,30 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **⚠️ PIPELINE ENFORCEMENT ACTIVO (opencode):** El plugin `pipeline-enforcer` bloquea cualquier edición de archivos (`edit`/`write`) hasta que se inicie el pipeline con `todowrite`. Si ves el error del plugin, ejecuta primero `todowrite` con los 6 pasos del pipeline. No intentes editar archivos sin pipeline — será bloqueado mecánicamente.
+> **⚠️ PIPELINE ENFORCEMENT ACTIVE (opencode):** The `pipeline-enforcer` plugin blocks any file edit (`edit`/`write`) until the pipeline is started with `todowrite`. If you see the plugin's error, first run `todowrite` with the 6 pipeline steps. Do not try to edit files without a pipeline — it will be blocked mechanically.
 >
-> **Claude Code:** El `pre-command` hook y el `git pre-commit hook` también verifican el estado del pipeline. No puedes commitear sin pipeline cerrado.
+> **Claude Code:** The `pre-command` hook and the `git pre-commit hook` also verify the pipeline state. You cannot commit without a closed pipeline.
 
-## Proyecto
+## Project
 
 **{{name}}** — {{description}}
 
 ## Codebase map
 
-| Directorio | Propósito |
+| Directory | Purpose |
 |---|---|
 {{#if monorepo}}
 {{#each workspaceDirs}}
 | `{{path}}/` | {{description}} |
 {{/each}}
 {{else}}
-| `src/` | Código fuente principal |
+| `src/` | Main source code |
 | `tests/` | Tests |
 {{/if}}
 
 ## Stack
 
-| Capa | Tecnología |
+| Layer | Technology |
 |---|---|
 {{#if isNode}}
 {{#if (eq packageManager "pnpm")}}
@@ -68,41 +68,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Package manager | Go modules |
 {{/if}}
 {{#if usesKafka}}
-| Mensajería | Kafka |
+| Messaging | Kafka |
 {{/if}}
 {{#if usesRedis}}
 | Cache / PubSub | Redis |
 {{/if}}
 {{#if usesSSE}}
-| Notificaciones realtime | Server-Sent Events (SSE) |
+| Realtime notifications | Server-Sent Events (SSE) |
 {{/if}}
 
-## Arquitectura
+## Architecture
 
 {{#if monorepo}}
-Monorepo {{packageManager}} workspaces.
+{{packageManager}} workspaces monorepo.
 {{/if}}
 
 {{#if usesHexagonalArchitecture}}
 ### Hexagonal Architecture (Ports & Adapters)
 
-**Regla no negociable:** el dominio de cada servicio define ports (interfaces). La infraestructura implementa adapters. Ningún use-case importa SDKs de infraestructura directamente.
+**Non-negotiable rule:** each service's domain defines ports (interfaces). Infrastructure implements adapters. No use-case imports infrastructure SDKs directly.
 
 ```
 domain/
-  entities/        # Entidades puras de dominio
+  entities/        # Pure domain entities
   ports/           # Interfaces (IMessagePublisher, IRepository, etc.)
-  use-cases/       # Lógica de negocio — depende solo de ports
+  use-cases/       # Business logic — depends only on ports
 
-application/       # Orquesta use-cases
+application/       # Orchestrates use-cases
 
 infrastructure/
-  messaging/       # Adapters de mensajería
-  persistence/     # Adapters de persistencia
+  messaging/       # Messaging adapters
+  persistence/     # Persistence adapters
 ```
 {{/if}}
 
-## Comandos
+## Commands
 
 ```bash
 # Tests
@@ -119,80 +119,169 @@ infrastructure/
 {{/if}}
 ```
 
-## Pipeline de desarrollo
+## Development pipeline
 
-### Pipeline feature (6 pasos)
+### Development methodology
+
+This harness enforces four integrated practices:
+
+| Practice | What it means | Where enforced |
+|---|---|---|
+| **SPDD** (Structured Prompt-Driven Development) | REASONS Canvas as first-class artifact. Prompt ↔ code bidirectional sync. "Corrige el prompt primero, el código después." | Steps 1a-1b (Canvas), 4 (Generate), 6 (Sync), 7b (final sync) |
+| **SDD** (Spec Driven Design) | Every feature starts with a formal spec. Specs are the single source of truth. | Step 1c: spec-generator |
+| **BDD** (Behavior Driven Development) | Acceptance criteria are executable Gherkin scenarios (Given/When/Then). | Step 1c: .feature files. Step 3: QA maps scenarios to tests. |
+| **TDD** (Test Driven Development) | RED → GREEN → REFACTOR cycle. Tests are written before code. | Steps 3-4-5-6 |
+
+### Feature pipeline (7 steps — SPDD + SDD + BDD + TDD)
 
 ```
-0. pre-spec               → leer .opencode/pipeline/start.md y ejecutar:
+0. pre-spec               → read .opencode/pipeline/start.md and run:
                               bash .opencode/pipeline/pre-spec.sh
-                           Si falla: resolver issues antes de continuar.
-                           Crear rama desde origin/main:
+                           If it fails: resolve the issues before continuing.
+                           Create a branch from origin/main:
                               git checkout -b feature/<slug> origin/main
-1. /spec-generator        → spec formal en spec/ con REASONS Canvas (XML)
-2. architect agent        → valida viabilidad técnica, enriquece paths y escenarios de test
-3. qa agent (RED)         → escribe tests que fallan por la razón correcta
-4. backend / frontend     → implementa hasta que los tests pasen en verde
-5. qa agent (GREEN)       → corre la suite completa y reporta
-6. cierre                 → leer .opencode/pipeline/close.md y ejecutar todos los pasos
+
+1. SPDD + SDD + BDD       → /spdd-analysis → spdd/analysis/<id>-analysis.md
+                              /spdd-reasons-canvas → spdd/prompt/<id>-canvas.md
+                              /spec-generator → spec/<date>-<slug>.spec.md
+                                 + spec/<slug>.feature (Gherkin scenarios)
+
+2. architect agent        → validates REASONS Canvas (R-E-A-S-O-N-S)
+                           validates BDD scenarios, cross-spec deps
+                           enriches paths → back to Canvas if invalid
+
+3. qa agent (RED)         → writes BDD step definitions + unit tests
+                           that fail for the right reason (Given/When/Then)
+                           1 test per Canvas Operation
+
+4. SPDD Generate + impl   → /spdd-generate → code from Canvas (TDD)
+                           backend/frontend implements Operation by Operation
+                           If logic correction: /spdd-prompt-update → Canvas → /spdd-generate
+
+5. qa agent (GREEN)       → runs full suite (unit + integration + BDD scenarios)
+                           + typecheck + lint + mutation testing
+                           + empirical validation (validate-empirica.md)
+
+6. refactor (if < 80%)    → improve design without changing behavior
+                           /spdd-sync → sync code changes back to Canvas
+
+7. close                  → spec archive, /spdd-sync final
+                           merge-to-dev.sh, PR, LEARNINGS.md, extract-learnings
 ```
 
-### Pipeline bugfix (pasos simplificados)
+### Bugfix pipeline (6 steps — TDD + SPDD)
 
 ```
 0. pre-spec               → bash .opencode/pipeline/pre-spec.sh
-                           Crear rama: git checkout -b fix/<slug> origin/main
-1. triage                → confirmar el bug, recolectar evidencias
-2. reproducir            → escribir test que reproduzca el bug (falla en rojo)
-3. architect (opcional)  → si el fix requiere cambios arquitecturales
-4. fix                   → implementar la corrección
-5. verify                → correr suite completa + typecheck
-6. cierre                → leer .opencode/pipeline/close.md y ejecutar instrucciones
+                           Create a branch: git checkout -b fix/<slug> origin/main
+
+1. triage + SPDD          → confirm the bug, collect evidence
+                           /spdd-analysis → spdd/analysis/<id>-fix-analysis.md
+                           /spdd-reasons-canvas → spdd/prompt/<id>-fix-canvas.md
+
+2. reproduce              → write a test that reproduces the bug (fails red)
+
+3. architect (optional)   → only if the fix changes structure
+
+4. SPDD Generate + fix    → /spdd-generate from Canvas
+                           If logic correction: update Canvas first, then code
+
+5. verify + spdd-sync     → run full suite + typecheck + lint
+                           /spdd-sync → Canvas = final code
+
+6. close                  → merge-to-dev.sh, PR, LEARNINGS.md, extract-learnings
 ```
+
+### Chore pipeline
+
+- If touching application code (src/, apps/, domain/, handlers/...) → same as bugfix (SPDD mandatory)
+- If config-only (CI, biome.json, README, dependency bumps) → scope → execute → verify → close (no spec, no Canvas)
 
 ### Git workflow
 
-| Tipo de tarea | Branch desde | Convención de nombre | PR (remoto) |
+| Task type | Branch from | Naming convention | PR (remote) |
 |---|---|---|---|
 | `feature` | `main` | `feature/<slug>` | PR → `main` |
 | `bugfix` | `main` | `fix/<slug>` | PR → `main` |
 | `chore` | `main` | `chore/<slug>` | PR → `main` |
 
-- **`dev` es permanente:** nunca se elimina. Es la rama de integración perpetua.
-- Al cerrar un scope, la rama se fusiona a `dev` local.
-- PRs apuntan a `main`, no a `dev`.
+- **`dev` is permanent:** it is never deleted. It is the perpetual integration branch.
+- When a scope closes, its branch is merged into local `dev`.
+- PRs target `main`, not `dev`.
 
-## Validaciones automáticas
+## SPDD artifacts (first-class, versioned)
 
-El harness bloquea mecánicamente la introducción de hardcodeos en tres niveles:
-
-| Nivel | Mecanismo | Cuándo |
+| Artifact | Location | Lifecycle |
 |---|---|---|
-| 1 | Plugin opencode | En tiempo real al ejecutar `edit`/`write` |
-| 2 | Git pre-commit hook | Antes de `git commit` |
-| 3 | Script standalone | Manual o CI |
+| REASONS Canvas | `spdd/prompt/<id>-canvas.md` | **Never archived** — accumulates domain knowledge |
+| SPDD Analysis | `spdd/analysis/<id>-analysis.md` | **Never archived** — reference for future features |
+| Spec (SDD) | `spec/<date>-<slug>.spec.md` | Archived to `spec/archived/` at close |
+| BDD Feature | `spec/<slug>.feature` | Versioned alongside the spec |
 
-## Convenciones
+**SPDD golden rule**: The Canvas leads, the code follows. Never edit code to fix logic without updating the Canvas first. Use `/spdd-prompt-update` → `/spdd-generate`.
 
-- **Specs primero**: toda feature arranca con un spec en `spec/`
-- **TDD**: QA escribe tests en rojo antes de que el implementador escriba código
-- **Idioma**: specs en inglés. Código y comentarios en inglés. Conversación con el usuario en su idioma.
-- **LEARNINGS.md**: aprendizajes se registran en `.claude/LEARNINGS.md`
+## Automatic validations
 
-## Automejora (learnings)
+The harness mechanically blocks the introduction of hardcoded values at three levels:
 
-Skills de learnings por agente: `qa-learnings`, `backend-learnings`, `frontend-learnings`, `architect-learnings`. Se actualizan automáticamente al cierre de cada tarea vía `scripts/extract-learnings.ts`.
-
-## Agentes
-
-| Agente | Rol | Cuándo |
+| Level | Mechanism | When |
 |---|---|---|
-| `pipeline` | Orquestador principal | Default agent |
-| `spec` | Escritor de specs | Paso 1 |
-| `architect` | Validador técnico | Paso 2 |
-| `qa` | QA (RED + GREEN) | Pasos 3 y 5 |
-| `backend` | Backend implementer | Paso 4 |
-{{#if hasFrontend}}
-| `frontend` | Frontend implementer | Paso 4 |
+| 1 | opencode plugin | In real time when running `edit`/`write` |
+| 2 | Git pre-commit hook | Before `git commit` |
+| 3 | Standalone script | Manually or in CI |
+
+## Conventions
+
+- **SPDD**: REASONS Canvas is a versioned artifact. "Corrige el prompt primero, el código después."
+- **SDD**: every feature starts with a spec in `spec/`. The spec is the contract — no implementation without a spec.
+- **BDD**: acceptance criteria are Gherkin scenarios (`Scenario:`, `Given`/`When`/`Then`). QA writes `.feature` files in RED phase.
+- **TDD**: RED → GREEN → REFACTOR. QA writes red tests before the implementer writes code. REFACTOR after green.
+- **Structure Prompting**: each agent produces structured output following its template schema. Validate before passing to the next step.
+- **Language**: specs in English. Code and comments in English. Conversation with the user in their language.
+- **LEARNINGS.md**: learnings are recorded in `.claude/LEARNINGS.md`
+
+{{#if monorepo}}
+- **Monorepo**: scoped commands via `{{packageManager}} --filter <workspace> <cmd>`, not workspace root
 {{/if}}
-| `explore` | Exploración de código | Búsquedas y análisis |
+{{#if usesHexagonalArchitecture}}
+- **Hexagonal architecture**: domain defines ports, infrastructure implements adapters. No domain imports from infrastructure.
+{{/if}}
+{{#if hasFirebase}}
+- **Firebase**: config via environment variables, never commit `.firebaserc` with secrets
+{{/if}}
+
+## Plugin architecture
+
+Errementari is installed as a plugin — pipeline scripts and plugins live in `node_modules/errementari/`, not copied into the project.
+
+| Path | Contents | Source |
+|---|---|---|
+| `node_modules/errementari/pipeline/` | Core enforcement, pre-spec, coordination | Plugin (npm) |
+| `node_modules/errementari/scripts/` | extract-learnings, sync-agents, validation | Plugin (npm) |
+| `.opencode/pipeline/` | Wrapper scripts → delegate to plugin | Generated by init |
+| `.claude/agents/` | Agent definitions | Synced from plugin |
+| `.opencode/agents/` | Agent definitions | Synced from plugin |
+
+## Do not touch (harness-managed files)
+
+These files are managed by Errementari — edit only if you know what you're doing:
+- `.opencode/pipeline/*` — pipeline wrappers (delegate to plugin)
+- `.errementari.json` — installation manifest (used by `upgrade`)
+
+## Self-improvement (learnings)
+
+Per-agent learnings skills: `qa-learnings`, `backend-learnings`, `frontend-learnings`, `architect-learnings`. They are updated automatically when each task closes via `extract-learnings.ts`.
+
+## Agents
+
+| Agent | Role | When | Methodologies |
+|---|---|---|---|
+| `pipeline` | Main orchestrator | Default agent | Enforces SPDD + SDD + BDD + TDD |
+| `spec` | Spec + Canvas writer | Step 1 | SPDD: REASONS Canvas, SDD: spec, BDD: Gherkin |
+| `architect` | Technical validator | Step 2 | Validates Canvas (R-E-A-S-O-N-S), USTs, BDD coverage |
+| `qa` | QA (RED + BDD + GREEN) | Steps 3, 5 | RED: failing tests + step defs. GREEN: BDD + unit + mutation |
+| `backend` | Backend implementer | Step 4 | TDD: implements to green, REFACTOR after. SPDD: spdd-sync |
+| {{#if hasFrontend}}
+| `frontend` | Frontend implementer | Step 4 | TDD: implements to green, REFACTOR after. SPDD: spdd-sync |
+| {{/if}}
+| `explore` | Code exploration | Searches and analysis | — |

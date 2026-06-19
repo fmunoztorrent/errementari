@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Read(.claude/**)",
-      "mcp__context7__*"{{#each permCommands}},
+      "mcp__context7__*",
+      "Skill(ponytail)",
+      "Skill(caveman)",
+      "Skill(find-skills)"{{#each permCommands}},
       "Bash({{this}}:*)"{{/each}}
     ]
   },

@@ -1,5 +1,9 @@
+# Errementari — local artifacts (per machine, never commit)
 node_modules
-package.json
 package-lock.json
 bun.lock
-.gitignore
+
+# Pipeline runtime state (session-local, regenerated automatically)
+pipeline/state.json
+pipeline/close-pending.json
+pipeline/coordination.json

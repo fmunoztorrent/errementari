@@ -3,15 +3,15 @@
   "lsp": true,
   "instructions": ["CLAUDE.md"],
   "watcher": {
-    "ignore": ["spec/archived/**"]
+    "ignore": ["spec/archived/**", "spdd/analysis/**", "spdd/prompt/**"]
   },
   "default_agent": "pipeline",
-  "plugin": [
-    ".opencode/plugins/pipeline-enforcer.js",
-    ".opencode/plugins/coordination.js"
-  ],
+  "plugin": ["errementari"],
   "skills": {
-    "paths": [".claude/skills"]
+    "paths": [
+      ".claude/skills",
+      "node_modules/errementari/skills"
+    ]
   },
   "agent": {
     "pipeline": {
@@ -29,8 +29,8 @@
   },
   "command": {
     "task": {
-      "template": "Clasifica y ejecuta el pipeline correspondiente para esta tarea siguiendo las instrucciones en CLAUDE.md (triaje, pipeline, todowrite + anuncios de transición):\n\n\{{input}}",
-      "description": "Invoca el pipeline automático (feature/bugfix/debug/chore) con todowrite + anuncios de transición",
+      "template": "Classify and run the corresponding pipeline (SPDD + SDD + BDD + TDD) following the instructions in CLAUDE.md:\n\n\{{input}}",
+      "description": "Invokes the automatic pipeline (feature/bugfix/debug/chore) with SPDD Canvas + todowrite + transition announcements",
       "subtask": false
     }
   }

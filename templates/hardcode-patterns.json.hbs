@@ -1,23 +1,23 @@
 {
-  "$description": "Patrones de hardcodeo prohibidos en el repositorio. Usado por validate-hardcodes.sh y pipeline-enforcer.js. Mantener sincronizado con CLAUDE.md §Validaciones automáticas.",
+  "$description": "Hardcoded-value patterns forbidden in the repository. Used by validate-hardcodes.sh and pipeline-enforcer.js. Keep in sync with CLAUDE.md §Automatic validations.",
   "patterns": [
     {
       "id": "absolute-user-path",
-      "description": "Ruta absoluta de usuario (no portable entre máquinas)",
+      "description": "Absolute user path (not portable across machines)",
       "regex": "/Users/[A-Za-z0-9_]+|/home/[A-Za-z0-9_]+|C:\\\\Users\\\\[A-Za-z0-9_]+",
-      "suggestion": "Usá rutas relativas, $HOME, o $(git rev-parse --show-toplevel)"
+      "suggestion": "Use relative paths, $HOME, or $(git rev-parse --show-toplevel)"
     },
     {
       "id": "hardcoded-socket",
-      "description": "Socket de Docker/Podman hardcodeado sin variable",
+      "description": "Docker/Podman socket hardcoded without a variable",
       "regex": "DOCKER_HOST=unix://",
-      "suggestion": "Usá el Makefile (make infra) o detección dinámica con $COMPOSE"
+      "suggestion": "Use the Makefile (make infra) or dynamic detection with $COMPOSE"
     },
     {
       "id": "container-name-prefix",
-      "description": "Nombre de contenedor con prefijo de proyecto (frágil si cambia el dir)",
-      "regex": "{{PROJECT_SLUG}}-[a-z]+-[0-9]+",
-      "suggestion": "Usá $COMPOSE exec <servicio> en lugar del nombre de contenedor"
+      "description": "Container name with project prefix (fragile if the dir changes)",
+      "regex": "{{slug}}-[a-z]+-[0-9]+",
+      "suggestion": "Use $COMPOSE exec <service> instead of the container name"
     }
   ],
   "allowlist": {

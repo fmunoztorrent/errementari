@@ -1,15 +1,18 @@
 import { execSync } from "child_process";
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join, relative, resolve } from "path";
 import prompts from "prompts";
-import { detect } from "../detect.js";
+import { detect, detectExistingHarness } from "../detect.js";
+import { backupFile, extractSections, generateSummary, mergeClaudeMd } from "../reconcile.js";
 import {
+  fileHash,
   getTemplateMappings,
-  harnessDir,
   readManifest,
   init as renderInit,
+  renderMappingContent,
   rootDir,
 } from "../render.js";
+import type { MergeAction } from "../types.js";
 
 function listFiles(dir: string, baseDir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -22,10 +25,11 @@ function listFiles(dir: string, baseDir: string, out: string[] = []): string[] {
 
 export async function initCommand(
   targetDir?: string,
-  options?: { yes?: boolean; dryRun?: boolean },
+  options?: { yes?: boolean; dryRun?: boolean; interactive?: boolean },
 ) {
   const autoConfirm = options?.yes || false;
   const dryRun = options?.dryRun || false;
+  const interactive = options?.interactive || false;
   const target = targetDir ? resolve(targetDir) : process.cwd();
 
   if (!existsSync(target)) {
@@ -54,10 +58,10 @@ export async function initCommand(
   }
 
   // Check if already initialized
-  const existing = readManifest(target);
-  if (existing) {
-    console.log(`  ✓ Harness already installed (v${existing.version})`);
-    console.log(`    Installed at: ${existing.installed_at}`);
+  const installedManifest = readManifest(target);
+  if (installedManifest) {
+    console.log(`  ✓ Harness already installed (v${installedManifest.version})`);
+    console.log(`    Installed at: ${installedManifest.installed_at}`);
     console.log(`    Use 'errementari upgrade' to update.`);
     console.log("");
     return;
@@ -85,19 +89,29 @@ export async function initCommand(
   console.log(`    Docker:      ${ctx.hasDocker ? "yes" : "no"}`);
   console.log("");
 
-  // ── Dry run: list what would be installed and stop ───────────────────────
+  // ── Detect existing harness files ───────────────────────────────────────
+  const existingFiles = detectExistingHarness(target);
+
+  // ── Dry run: list what would be installed and stop (no writes at all) ────
   if (dryRun) {
-    const harnessFiles = listFiles(harnessDir(), harnessDir());
+    if (existingFiles.files.length > 0) {
+      console.log(generateSummary(existingFiles));
+      console.log("");
+    }
     const mappings = getTemplateMappings(ctx);
-    console.log(`  [dry-run] Would install ${harnessFiles.length + mappings.length + 1} files:`);
-    for (const f of harnessFiles) console.log(`    + ${f}`);
+    const wrapperCount = 6; // pipeline wrappers
+    const staticCount = 2;  // .opencode/package.json + .gitignore
+    console.log(`  [dry-run] Would install ${mappings.length + staticCount + wrapperCount + 1} items:`);
+    console.log(`    + .opencode/pipeline/* (${wrapperCount} wrappers → plugin)`);
+    console.log(`    + .opencode/package.json + .gitignore (plugin deps)`);
     for (const m of mappings) console.log(`    + ${m.target} (${m.type})`);
+    console.log(`    + .claude/agents/* + .opencode/agents/* (synced from plugin)`);
     console.log("    + .errementari.json (manifest)");
     console.log("");
     return;
   }
 
-  // ── Confirm ──────────────────────────────────────────────────────────────
+  // ── Confirm (before any file is touched) ─────────────────────────────────
   if (!autoConfirm) {
     const response = await prompts([
       {
@@ -129,12 +143,133 @@ export async function initCommand(
     ctx.description = response.description || ctx.description;
   }
 
+  // ── Reconciliation decisions (uses the FINAL ctx from the prompts) ───────
+  const keepTargets = new Set<string>();
+  let mergedClaudeMdContent: string | null = null;
+
+  if (existingFiles.files.length > 0) {
+    console.log(generateSummary(existingFiles));
+    console.log("");
+
+    let claudeMdAction: MergeAction;
+    let overwriteAgents: boolean;
+    let regenerateIgnore: boolean;
+
+    if (interactive) {
+      const reconcileResponse = await prompts([
+        {
+          type: "select",
+          name: "claudeMdAction",
+          message: `CLAUDE.md — what to do?`,
+          choices: [
+            {
+              title: "Merge: extract project data and integrate into new template (recommended)",
+              value: "merge",
+            },
+            { title: "Keep existing as-is", value: "keep" },
+            { title: "Overwrite with harness template", value: "overwrite" },
+            { title: "Skip CLAUDE.md entirely", value: "skip" },
+          ],
+        },
+        {
+          type: () => (existingFiles.harnessAgents.length > 0 ? "confirm" : null),
+          name: "overwriteAgents",
+          message: `Overwrite ${existingFiles.harnessAgents.length} harness agent files? Your versions will be backed up.`,
+          initial: false,
+        },
+        {
+          type: () => (existingFiles.hasClaudeIgnore ? "confirm" : null),
+          name: "regenerateIgnore",
+          message: "Regenerate .claudeignore with project-specific best practices?",
+          initial: true,
+        },
+        {
+          type: "confirm",
+          name: "confirmed",
+          message: "Proceed with reconciliation?",
+          initial: true,
+        },
+      ]);
+
+      if (!reconcileResponse.confirmed) {
+        console.log("  Cancelled.");
+        return;
+      }
+      claudeMdAction = (reconcileResponse.claudeMdAction as MergeAction) || "merge";
+      overwriteAgents = reconcileResponse.overwriteAgents === true;
+      regenerateIgnore = reconcileResponse.regenerateIgnore !== false;
+    } else {
+      // Auto-reconciliation mode (default)
+      console.log("  Auto-reconciling existing files...");
+      console.log("");
+      claudeMdAction = "merge";
+      overwriteAgents = true;
+      regenerateIgnore = true;
+    }
+
+    // CLAUDE.md: merge extracts project data from the existing file into the
+    // freshly rendered template; keep/skip leaves the existing file untouched.
+    if (claudeMdAction === "keep" || claudeMdAction === "skip") {
+      keepTargets.add("CLAUDE.md");
+    } else if (claudeMdAction === "merge" && existingFiles.hasClaudeMd) {
+      const oldSections = extractSections(readFileSync(join(target, "CLAUDE.md"), "utf-8"));
+      if (Object.keys(oldSections).length > 0) {
+        const claudeMapping = getTemplateMappings(ctx).find((m) => m.target === "CLAUDE.md");
+        const rendered = claudeMapping ? renderMappingContent(claudeMapping, ctx) : null;
+        if (rendered) {
+          mergedClaudeMdContent = mergeClaudeMd(rendered, oldSections, ctx);
+          console.log(`  ✓ CLAUDE.md: project data extracted and merged`);
+        }
+      }
+    }
+
+    if (!overwriteAgents) {
+      for (const agent of existingFiles.harnessAgents) {
+        keepTargets.add(`.claude/agents/${agent}.md`);
+      }
+    }
+    if (existingFiles.hasClaudeIgnore && !regenerateIgnore) {
+      keepTargets.add(".claudeignore");
+    }
+
+    // Back up every existing file we are about to overwrite
+    const backups: string[] = [];
+    const backupIfOverwriting = (rel: string) => {
+      if (!keepTargets.has(rel) && existsSync(join(target, rel))) {
+        const backup = backupFile(target, rel);
+        if (backup) backups.push(backup);
+      }
+    };
+    if (existingFiles.hasClaudeMd) backupIfOverwriting("CLAUDE.md");
+    if (existingFiles.hasClaudeIgnore) backupIfOverwriting(".claudeignore");
+    for (const agent of existingFiles.harnessAgents) {
+      backupIfOverwriting(`.claude/agents/${agent}.md`);
+    }
+    if (backups.length > 0) {
+      console.log(`  Backups: ${backups.join(", ")}`);
+    }
+    if (existingFiles.customAgents.length > 0) {
+      console.log(`  · Custom agents preserved: ${existingFiles.customAgents.join(", ")}`);
+    }
+    console.log("");
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   console.log("");
   console.log("  Installing harness...");
   console.log("");
 
-  const manifest = renderInit(target, ctx);
+  const manifest = renderInit(target, ctx, { keepTargets });
+
+  if (mergedClaudeMdContent && !keepTargets.has("CLAUDE.md")) {
+    writeFileSync(join(target, "CLAUDE.md"), mergedClaudeMdContent);
+    // Keep the manifest consistent with what is actually on disk. originalHash
+    // stays as the plain template render, so `upgrade` sees the merged file as
+    // user-modified and never overwrites the merged project data.
+    const entry = manifest.files["CLAUDE.md"];
+    if (entry) entry.hash = fileHash(mergedClaudeMdContent);
+    writeFileSync(join(target, ".errementari.json"), JSON.stringify(manifest, null, 2));
+  }
 
   console.log("");
   console.log(`  Harness v${manifest.version} installed successfully.`);
@@ -174,7 +309,10 @@ export async function initCommand(
   console.log("  Next steps:");
   console.log("  1. Review CLAUDE.md — adjust project-specific sections");
   console.log("  2. Review .claude/settings.json — adjust permissions");
-  console.log("  3. Start a pipeline: /task 'your first feature'");
+  console.log("  3. For OpenCode: the plugin loads from .opencode/node_modules/");
+  console.log("  4. For Claude Code: claude plugin install github.com/fmunoztorrent/errementari");
+  console.log("  5. Start a pipeline: /task 'your first feature'");
+  console.log("     SPDD+SDD+BDD+TDD: analysis → Canvas → RED → GREEN → close");
   console.log("═══════════════════════════════════════════");
   console.log("");
 }

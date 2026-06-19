@@ -78,10 +78,12 @@ export function getTemplateMappings(ctx: ProjectContext): TemplateMapping[] {
     { template: ".claudeignore.hbs", target: ".claudeignore", type: "template" },
     { template: "AGENTS.md.hbs", target: ".claude/AGENTS.md", type: "template" },
     { template: "LEARNINGS.md.stub", target: ".claude/LEARNINGS.md", type: "stub" },
-    // Stored under non-dotfile names: npm pack drops .gitignore/package.json
-    // files inside packed directories, so these can't live in harness/
-    { template: "opencode-package.json", target: ".opencode/package.json", type: "static" },
-    { template: "opencode-gitignore", target: ".opencode/.gitignore", type: "static" },
+    // Rendered (not generic): the container-name pattern embeds the project slug
+    {
+      template: "hardcode-patterns.json.hbs",
+      target: ".opencode/pipeline/hardcode-patterns.json",
+      type: "template",
+    },
     // Learnings skills
     {
       template: "skills/qa-learnings/SKILL.md",
@@ -212,45 +214,185 @@ export function renderMapping(
   };
 }
 
-export function init(targetRoot: string, ctx: ProjectContext): Manifest {
+export interface InitOptions {
+  /**
+   * Mapping targets the user chose to keep as-is (reconciliation "keep").
+   * The existing file is not overwritten; it is registered in the manifest
+   * with originalHash = the would-be render, so `upgrade` treats it as
+   * user-modified and never clobbers it.
+   */
+  keepTargets?: Set<string>;
+}
+
+export function init(targetRoot: string, ctx: ProjectContext, options?: InitOptions): Manifest {
+  const version = JSON.parse(readFileSync(join(rootDir(), "package.json"), "utf-8")).version;
   const manifest: Manifest = {
-    version: JSON.parse(readFileSync(join(rootDir(), "package.json"), "utf-8")).version,
+    version,
     installed_at: new Date().toISOString(),
     files: {},
   };
 
-  // ── Copy harness (generic files) ──────────────────────────────────────────
-  const srcHarness = harnessDir();
-  copyDir(srcHarness, targetRoot);
-  console.log("  ✓ Copied harness files");
+  // ── Pipeline wrappers → delegate to npm plugin ───────────────────────────
+  // Thin scripts that delegate to node_modules/errementari/pipeline/*.
+  // Only installed if the target project doesn't already have them.
+  const pipelineDir = join(targetRoot, ".opencode", "pipeline");
+  if (!existsSync(pipelineDir)) mkdirSync(pipelineDir, { recursive: true });
 
-  // ── Register harness files in manifest (with hash for upgrade-safety) ─────
-  function registerHarnessFiles(dir: string, baseDir: string) {
-    for (const entry of readdirSync(dir)) {
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
-        registerHarnessFiles(full, baseDir);
-      } else {
-        const rel = relative(baseDir, full);
-        const installed = join(targetRoot, rel);
-        const hash = existsSync(installed) ? fileHash(readFileSync(installed, "utf-8")) : undefined;
-        manifest.files[rel] = {
-          type: "generic",
-          version: manifest.version,
-          hash,
-          originalHash: hash,
-        };
-      }
+  const wrapperScript = (pluginPath: string): string =>
+    `#!/bin/bash\n# Errementari wrapper — delegates to the installed plugin.\n` +
+    `ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"\n` +
+    `PLUGIN_SCRIPT="$ROOT/node_modules/errementari/${pluginPath}"\n` +
+    `if [ -f "$PLUGIN_SCRIPT" ]; then\n` +
+    `  exec bash "$PLUGIN_SCRIPT" "$@"\n` +
+    `else\n` +
+    `  echo "[errementari] Plugin not installed. Run: npm install --prefix .opencode" >&2\n` +
+    `  exit 1\n` +
+    `fi\n`;
+
+  const wrapperJs = (pluginPath: string): string =>
+    `// Errementari wrapper — delegates to the installed plugin.\n` +
+    `import { execSync } from "child_process";\n` +
+    `function getRoot() { try { return execSync("git rev-parse --show-toplevel", {encoding:"utf-8"}).trim() } catch { return process.cwd() } }\n` +
+    `const plug = getRoot() + "/node_modules/errementari/${pluginPath}";\n` +
+    `import(plug.startsWith("file://") ? plug : "file://" + plug).then(m => m.default?.()).catch(() => {})\n`;
+
+  const wrappers: Array<{ dest: string; content: string; mode?: number }> = [
+    { dest: "pre-spec.sh", content: wrapperScript("pipeline/pre-spec.sh"), mode: 0o755 },
+    { dest: "check.sh", content: wrapperScript("pipeline/check.sh"), mode: 0o755 },
+    { dest: "merge-to-dev.sh", content: wrapperScript("pipeline/merge-to-dev.sh"), mode: 0o755 },
+    { dest: "coordination.sh", content: wrapperScript("pipeline/coordination.sh"), mode: 0o755 },
+    { dest: "coordination-claude-hook.sh", content: wrapperScript("pipeline/coordination-claude-hook.sh"), mode: 0o755 },
+    { dest: "pre-commit", content: wrapperScript("pipeline/pre-commit"), mode: 0o755 },
+  ];
+
+  for (const w of wrappers) {
+    const destPath = join(pipelineDir, w.dest);
+    const content = w.content;
+    const hash = fileHash(content);
+    // Never overwrite an existing wrapper — it may have been customized
+    if (!existsSync(destPath)) {
+      writeFileSync(destPath, content);
+      if (w.mode) chmodSync(destPath, w.mode);
     }
+    const rel = `.opencode/pipeline/${w.dest}`;
+    const actualContent = existsSync(destPath) ? readFileSync(destPath, "utf-8") : content;
+    manifest.files[rel] = {
+      type: "generic",
+      version,
+      hash: fileHash(actualContent),
+      originalHash: hash,
+    };
   }
-  registerHarnessFiles(srcHarness, srcHarness);
+
+  console.log(`  ✓ Created ${wrappers.length} pipeline wrappers`);
+
+  // ── Plugin directory deps ────────────────────────────────────────────────
+  const opencodeDir = join(targetRoot, ".opencode");
+  const pluginsDir = join(targetRoot, ".opencode", "plugins");
+  if (!existsSync(pluginsDir)) mkdirSync(pluginsDir, { recursive: true });
+
+  // opencode npm deps: pull errementari as dependency
+  const opencodePkgPath = join(opencodeDir, "package.json");
+  const opencodePkgContent = JSON.stringify({
+    name: "opencode-plugins",
+    private: true,
+    type: "module",
+    dependencies: { errementari: `^${version}` },
+  }, null, 2) + "\n";
+  const opencodePkgHash = fileHash(opencodePkgContent);
+  if (!existsSync(opencodePkgPath)) {
+    writeFileSync(opencodePkgPath, opencodePkgContent);
+  }
+  manifest.files[".opencode/package.json"] = {
+    type: "static",
+    hash: existsSync(opencodePkgPath) ? fileHash(readFileSync(opencodePkgPath, "utf-8")) : opencodePkgHash,
+    originalHash: opencodePkgHash,
+  };
+
+  // .opencode/.gitignore
+  const gitignorePath = join(opencodeDir, ".gitignore");
+  const gitignoreContent = "node_modules/\n";
+  const gitignoreHash = fileHash(gitignoreContent);
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, gitignoreContent);
+  }
+  manifest.files[".opencode/.gitignore"] = {
+    type: "static",
+    hash: existsSync(gitignorePath) ? fileHash(readFileSync(gitignorePath, "utf-8")) : gitignoreHash,
+    originalHash: gitignoreHash,
+  };
+
+  console.log("  ✓ Created .opencode plugin config");
 
   // ── Render templates ─────────────────────────────────────────────────────
   const mappings = getTemplateMappings(ctx);
 
   for (const mapping of mappings) {
+    const destPath = join(targetRoot, mapping.target);
+    const existing = existsSync(destPath) ? readFileSync(destPath, "utf-8") : null;
+
+    // Stubs hold user content — never overwrite a non-empty existing stub.
+    const keepExisting =
+      existing !== null &&
+      ((options?.keepTargets?.has(mapping.target) ?? false) ||
+        (mapping.type === "stub" && existing.length > 0));
+
+    if (keepExisting) {
+      const wouldRender = renderMappingContent(mapping, ctx);
+      manifest.files[mapping.target] = {
+        type: mapping.type,
+        hash: fileHash(existing),
+        // Baseline ≠ disk content → upgrade classifies it as user-modified
+        // and leaves it untouched.
+        originalHash: wouldRender !== null ? fileHash(wouldRender) : undefined,
+      };
+      console.log(`  · Kept: ${mapping.target}`);
+      continue;
+    }
+
     const entry = renderMapping(mapping, targetRoot, ctx);
     if (entry) manifest.files[mapping.target] = entry;
+  }
+
+  // ── Sync agents from plugin to project ───────────────────────────────────
+  // Copy canonical plugin agents into .claude/agents/ and .opencode/agents/
+  const pluginAgentsDir = join(rootDir(), "agents");
+  if (existsSync(pluginAgentsDir)) {
+    const projectClaudeAgents = join(targetRoot, ".claude", "agents");
+    const projectOpencodeAgents = join(targetRoot, ".opencode", "agents");
+    if (!existsSync(projectClaudeAgents)) mkdirSync(projectClaudeAgents, { recursive: true });
+    if (!existsSync(projectOpencodeAgents)) mkdirSync(projectOpencodeAgents, { recursive: true });
+
+    for (const entry of readdirSync(pluginAgentsDir)) {
+      if (!entry.endsWith(".md")) continue;
+      const agentName = basename(entry, ".md");
+      const body = readFileSync(join(pluginAgentsDir, entry), "utf-8");
+
+      // Claude Code agent: add frontmatter
+      const ccFrontmatter = generateClaudeCodeFrontmatter(agentName);
+      const ccContent = ccFrontmatter + body;
+      const ccPath = join(projectClaudeAgents, entry);
+      if (!existsSync(ccPath)) writeFileSync(ccPath, ccContent);
+      const ccRel = `.claude/agents/${entry}`;
+      manifest.files[ccRel] = {
+        type: "generic",
+        version,
+        hash: existsSync(ccPath) ? fileHash(readFileSync(ccPath, "utf-8")) : fileHash(ccContent),
+        originalHash: fileHash(ccContent),
+      };
+
+      // OpenCode agent: just the body (no frontmatter needed, config provides context)
+      const ocPath = join(projectOpencodeAgents, entry);
+      if (!existsSync(ocPath)) writeFileSync(ocPath, body);
+      const ocRel = `.opencode/agents/${entry}`;
+      manifest.files[ocRel] = {
+        type: "generic",
+        version,
+        hash: existsSync(ocPath) ? fileHash(readFileSync(ocPath, "utf-8")) : fileHash(body),
+        originalHash: fileHash(body),
+      };
+    }
+    console.log(`  ✓ Synced plugin agents to project`);
   }
 
   // ── Write manifest ────────────────────────────────────────────────────────

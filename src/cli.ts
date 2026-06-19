@@ -24,15 +24,18 @@ program
   .description("Initialize the harness in a project")
   .argument("[dir]", "Target project directory (defaults to CWD)")
   .option("-y, --yes", "Skip prompts and use detected values")
+  .option("--interactive", "Prompt for each file conflict (default: auto-merge)")
   .option("--dry-run", "Show what would be installed without writing files")
-  .action(async (dir?: string, options?: { yes?: boolean; dryRun?: boolean }) => {
-    try {
-      const { initCommand } = await import("./commands/init.js");
-      await initCommand(dir, options);
-    } catch (e) {
-      fail(e);
-    }
-  });
+  .action(
+    async (dir?: string, options?: { yes?: boolean; dryRun?: boolean; interactive?: boolean }) => {
+      try {
+        const { initCommand } = await import("./commands/init.js");
+        await initCommand(dir, options);
+      } catch (e) {
+        fail(e);
+      }
+    },
+  );
 
 program
   .command("upgrade")
@@ -88,14 +91,18 @@ program
     }
   });
 
-// Default command = init
-program.action(async () => {
-  try {
-    const { initCommand } = await import("./commands/init.js");
-    await initCommand();
-  } catch (e) {
-    fail(e);
-  }
-});
+// Default command = init ("errementari" / "errementari ./my-project")
+program
+  .argument("[dir]", "Target project directory (defaults to CWD)")
+  .option("-y, --yes", "Skip prompts and use detected values")
+  .option("--dry-run", "Show what would be installed without writing files")
+  .action(async (dir?: string, options?: { yes?: boolean; dryRun?: boolean }) => {
+    try {
+      const { initCommand } = await import("./commands/init.js");
+      await initCommand(dir, options);
+    } catch (e) {
+      fail(e);
+    }
+  });
 
 program.parse();

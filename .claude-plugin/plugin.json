@@ -1,0 +1,11 @@
+{
+  "name": "errementari",
+  "description": "Dual-tool (Claude Code + OpenCode) TDD/BDD/SDD/SPDD pipeline harness. Enforces structured prompt-driven development with specialized sub-agents for spec, architecture, backend, frontend, and QA.",
+  "version": "2.0.0",
+  "author": {
+    "name": "fmunoztorrent"
+  },
+  "homepage": "https://github.com/fmunoztorrent/errementari",
+  "repository": "github.com/fmunoztorrent/errementari",
+  "license": "MIT"
+}

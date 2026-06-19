@@ -144,3 +144,77 @@ test("Claude Code agents get frontmatter; opencode agents do not", () => {
     cleanup();
   }
 });
+
+// ── init: keepTargets + stub protection ──────────────────────────────────────
+
+test("init keepTargets leaves the existing file untouched and protects it from upgrade", () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    writeJson(join(root, "package.json"), {
+      name: "fixture-keep",
+      description: "Keep fixture",
+      devDependencies: { typescript: "^5.0.0" },
+    });
+    const userClaudeMd = "# My very own CLAUDE.md\nDo not replace.\n";
+    writeFileSync(join(root, "CLAUDE.md"), userClaudeMd);
+
+    const manifest = init(root, detect(root), { keepTargets: new Set(["CLAUDE.md"]) });
+
+    assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf-8"), userClaudeMd);
+    const entry = manifest.files["CLAUDE.md"];
+    assert.ok(entry, "kept file must still be registered in the manifest");
+    assert.notEqual(
+      entry.hash,
+      entry.originalHash,
+      "baseline must differ from disk so upgrade treats it as user-modified",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("init never overwrites a non-empty existing stub", () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    writeJson(join(root, "package.json"), {
+      name: "fixture-stub",
+      description: "Stub fixture",
+      devDependencies: { typescript: "^5.0.0" },
+    });
+    const learnings = join(root, ".claude", "LEARNINGS.md");
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    const userContent = "# learnings\n- prior wisdom\n";
+    writeFileSync(learnings, userContent);
+
+    init(root, detect(root));
+
+    assert.equal(readFileSync(learnings, "utf-8"), userContent);
+  } finally {
+    cleanup();
+  }
+});
+
+test("init renders hardcode-patterns.json with the project slug", () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    writeJson(join(root, "package.json"), {
+      name: "My Cool App",
+      description: "Slug fixture",
+      devDependencies: { typescript: "^5.0.0" },
+    });
+
+    init(root, detect(root));
+
+    const rendered = readFileSync(
+      join(root, ".opencode", "pipeline", "hardcode-patterns.json"),
+      "utf-8",
+    );
+    assert.ok(
+      rendered.includes("my-cool-app-[a-z]+-[0-9]+"),
+      "slug must be rendered into the regex",
+    );
+    JSON.parse(rendered); // must be valid JSON
+  } finally {
+    cleanup();
+  }
+});
