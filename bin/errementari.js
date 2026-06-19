@@ -195,6 +195,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .name("errementari")
     .description("Dual-tool (Claude Code + OpenCode) TDD/BDD/SDD/SPDD pipeline harness")
     .version(pkg.version)
+    .enablePositionalOptions()
 
   program
     .command("init")
