@@ -3,7 +3,7 @@
     "allow": [
       "Read(.claude/**)",
       "mcp__context7__*"{{#each permCommands}},
-      "Bash({{this}})"{{/each}}
+      "Bash({{this}}:*)"{{/each}}
     ]
   },
   "hooks": {
@@ -38,6 +38,35 @@
             "command": "bash .opencode/pipeline/coordination-claude-hook.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .opencode/pipeline/pipeline-cli.mjs guard-edit"
+          }
+        ]
+      },
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .opencode/pipeline/pipeline-cli.mjs check-activation"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .opencode/pipeline/pipeline-cli.mjs sync-todos"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -46,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'HOOK: Tarea completada. Antes de cerrar: (1) actualiza el spec en spec/ marcando tareas completadas; (2) agrega una entrada en .claude/LEARNINGS.md si aprendiste algo no obvio; (3) actualiza CLAUDE.md si hay cambios arquitecturales, nuevas convenciones o decisiones que deben persistir.'"
+            "command": "echo 'HOOK: Task completed. Before closing: (1) update the spec in spec/ marking completed tasks; (2) add an entry to .claude/LEARNINGS.md if you learned something non-obvious; (3) update CLAUDE.md if there are architectural changes, new conventions or decisions that must persist.'"
           }
         ]
       },
@@ -55,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f .opencode/pipeline/close-pending.json ] && npx tsx scripts/extract-learnings.ts 2>/dev/null || true"
+            "command": "[ -f .opencode/pipeline/close-pending.json ] && command -v npx >/dev/null 2>&1 && npx -y tsx scripts/extract-learnings.ts 2>/dev/null || true"
           }
         ]
       }
