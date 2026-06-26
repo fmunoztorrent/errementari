@@ -3,6 +3,25 @@
 All notable changes to Errementari are documented here. The `errementari upgrade`
 command moves installed harnesses between these versions.
 
+## [2.1.0] — 2026-06-26
+
+### Added
+
+- **Pipeline `.md` files copied to project** — `start.md`, `close.md`, and `validate-empirica.md` are now copied to `.opencode/pipeline/` during `init`. Agents can read them directly without depending on `node_modules/errementari`.
+- **`coordination.json` initial state** — `init` creates `.opencode/pipeline/coordination.json` as `{}` so coordination tools don't fail on first read.
+- **Vite `noEmit` convention** — projects detected as using Vite now document in CLAUDE.md that `tsc` is typecheck-only (`noEmit: true` required in `tsconfig.json`) to prevent stale `.js` files from interfering with Vite's bundler.
+- **SSG detection** — `detect.ts` now sets `usesSSG: true` when the project has `vite-react-ssg`, `vite-plugin-ssr`, `vite-ssg`, `astro`, or `vite-plugin-react-pages` in dependencies.
+- **SSG data loading convention** — SSG projects document the `import.meta.glob` pattern as the Vite-native alternative to `node:fs` for file content loading, with the `if (!import.meta.env.SSR)` guard for React Router loaders.
+
+### Changed
+
+- **Local install fallback** — when `npm install` fails in `.opencode/` (because `errementari` is not published on the public npm registry), `init` now falls back to installing from the local Errementari source checkout.
+- **Wrapper error message** — when the pipeline plugin is not installed, the error now lists 3 actionable options: install from local path, use `npm link`, or publish to npm.
+
+### Fixed
+
+- **`ProjectContext` missing `usesSSG` field** — added to `types.ts` and all test fixtures.
+
 ## [1.1.0] — 2026-06-10
 
 ### Fixed

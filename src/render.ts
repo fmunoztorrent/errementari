@@ -270,7 +270,10 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
     `if [ -f "$PLUGIN_SCRIPT" ]; then\n` +
     `  exec bash "$PLUGIN_SCRIPT" "$@"\n` +
     `else\n` +
-    `  echo "[errementari] Plugin not installed. Run: npm install --prefix .opencode" >&2\n` +
+    `  echo "[errementari] Plugin not installed.\n` +
+    `  echo "  Option 1: npm install --prefix .opencode /path/to/errementari"\n` +
+    `  echo "  Option 2: cd /path/to/errementari && npm link && npm link errementari --prefix .opencode"\n` +
+    `  echo "  Option 3: publish errementari to npm, then: npm install --prefix .opencode" >&2\n` +
     `  exit 1\n` +
     `fi\n`;
 
@@ -314,6 +317,51 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
   }
 
   console.log(`  ✓ Created ${wrappers.length} pipeline wrappers`);
+
+  // ── Pipeline instructional .md files ───────────────────────────────────
+  const pipelineMdFiles = ["start.md", "close.md", "validate-empirica.md"];
+  const pipelineSrcDir = join(rootDir(), "pipeline");
+
+  for (const mdFile of pipelineMdFiles) {
+    const srcPath = join(pipelineSrcDir, mdFile);
+    const destPath = join(pipelineDir, mdFile);
+
+    if (existsSync(srcPath)) {
+      const content = readFileSync(srcPath, "utf-8");
+      const hash = fileHash(content);
+      // Never overwrite an existing .md file — user may have customized it
+      if (!existsSync(destPath)) {
+        writeFileSync(destPath, content);
+      }
+      const rel = `.opencode/pipeline/${mdFile}`;
+      const actualContent = existsSync(destPath) ? readFileSync(destPath, "utf-8") : content;
+      manifest.files[rel] = {
+        type: "static",
+        version,
+        hash: fileHash(actualContent),
+        originalHash: hash,
+      };
+    }
+  }
+
+  console.log(`  ✓ Copied ${pipelineMdFiles.length} pipeline .md files`);
+
+  console.log(`  ✓ Copied ${pipelineMdFiles.length} pipeline .md files`);
+
+  // ── Coordination state file ────────────────────────────────────────────
+  const coordinationPath = join(pipelineDir, "coordination.json");
+  const coordinationContent = "{}\n";
+  const coordinationHash = fileHash(coordinationContent);
+  if (!existsSync(coordinationPath)) {
+    writeFileSync(coordinationPath, coordinationContent);
+  }
+  manifest.files[".opencode/pipeline/coordination.json"] = {
+    type: "static",
+    hash: existsSync(coordinationPath)
+      ? fileHash(readFileSync(coordinationPath, "utf-8"))
+      : coordinationHash,
+    originalHash: coordinationHash,
+  };
 
   // ── Plugin directory deps ────────────────────────────────────────────────
   const opencodeDir = join(targetRoot, ".opencode");

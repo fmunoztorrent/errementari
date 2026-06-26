@@ -245,6 +245,17 @@ export function detect(root: string): ProjectContext {
     isNode &&
     (existsSync(join(root, "vite.config.ts")) || existsSync(join(root, "vite.config.js")));
 
+  const usesSSG =
+    usesVite &&
+    (existsSync(join(root, "vite.config.ssg.ts")) ||
+      findInDeps(pkg || {}, [
+        "vite-react-ssg",
+        "vite-plugin-ssr",
+        "vite-ssg",
+        "astro",
+        "vite-plugin-react-pages",
+      ]));
+
   const usesHexagonalArchitecture =
     existsSync(join(root, "domain")) && existsSync(join(root, "infrastructure"));
 
@@ -365,6 +376,7 @@ export function detect(root: string): ProjectContext {
     hasDocker,
     hasFirebase,
     usesVite,
+    usesSSG,
     usesBDD,
     permCommands: [...new Set(permCommands)],
     selectedCLIs: ["claude", "opencode"],

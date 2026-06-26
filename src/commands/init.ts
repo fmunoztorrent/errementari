@@ -332,9 +332,22 @@ export async function initCommand(
       console.log("  Installing opencode plugin dependencies...");
       execSync("npm install --no-save", { cwd: opencodeDir, stdio: "inherit" });
       console.log("  ✓ Plugin dependencies installed");
-    } catch {
-      console.log("  ⚠ Could not install plugin deps. Run manually:");
-      console.log(`    cd ${opencodeDir} && npm install`);
+    } catch (err: unknown) {
+      // npm install may fail because errementari isn't published on the public registry.
+      // Fall back to installing from the local Errementari source checkout.
+      const errementariSource = rootDir();
+      console.log("  ⚠ npm install failed. Trying local install from Errementari source...");
+      try {
+        execSync(`npm install --no-save "${errementariSource}"`, {
+          cwd: opencodeDir,
+          stdio: "inherit",
+        });
+        console.log("  ✓ Plugin installed from local path");
+      } catch (err2: unknown) {
+        console.log("  ⚠ Could not install plugin dependencies. Run manually:");
+        console.log(`    cd ${opencodeDir} && npm install "${errementariSource}"`);
+        console.log("    or: cd ${errementariSource} && npm link && cd ${opencodeDir} && npm link errementari");
+      }
     }
   }
 

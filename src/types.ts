@@ -35,6 +35,7 @@ export interface ProjectContext {
   hasDocker: boolean;
   hasFirebase: boolean;
   usesVite: boolean;
+  usesSSG: boolean;
   usesBDD: boolean;
 
   permCommands: string[];
