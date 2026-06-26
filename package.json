@@ -1,74 +1,7 @@
 {
-  "name": "errementari",
-  "version": "2.0.0",
-  "description": "Dual-tool (Claude Code + OpenCode) TDD/BDD/SDD/SPDD pipeline plugin. Enforces structured prompt-driven development with specialized sub-agents.",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/fmunoztorrent/errementari.git"
-  },
-  "homepage": "https://github.com/fmunoztorrent/errementari#readme",
-  "bugs": {
-    "url": "https://github.com/fmunoztorrent/errementari/issues"
-  },
-  "bin": {
-    "errementari": "bin/errementari.js"
-  },
-  "exports": {
-    ".": "./opencode-plugin.ts"
-  },
-  "files": [
-    "dist/",
-    "bin/",
-    "pipeline/",
-    "scripts/",
-    "templates/",
-    "skills/",
-    "agents/",
-    "commands/",
-    "hooks/",
-    ".claude-plugin/",
-    "opencode-plugin.ts",
-    "settings.json"
-  ],
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx bin/errementari.js",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts",
-    "lint": "biome check src",
-    "format": "biome format --write src",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "keywords": [
-    "pipeline",
-    "harness",
-    "claude-code",
-    "opencode",
-    "tdd",
-    "bdd",
-    "sdd",
-    "spdd",
-    "structured-prompt",
-    "reasons-canvas",
-    "spec-driven"
-  ],
-  "license": "MIT",
-  "type": "module",
+  "name": "errementari-workspace",
+  "private": true,
   "dependencies": {
-    "commander": "^12.1.0",
-    "handlebars": "^4.7.8",
-    "just-diff": "^6.0.2",
-    "prompts": "^2.4.2"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@types/node": "^20.14.0",
-    "@types/prompts": "^2.4.9",
-    "tsx": "^4.19.0",
-    "typescript": "^5.5.0"
+    "errementari": "workspace:*"
   }
 }

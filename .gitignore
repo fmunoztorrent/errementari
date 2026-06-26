@@ -1,3 +1,18 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Harness installed by errementari init (workspace-only, not committed)
+.opencode/
+CLAUDE.md
+opencode.json
+.claudeignore
+.errementari.json
+.claude/agents/
+.claude/skills/
+.claude/AGENTS.md
+.claude/LEARNINGS.md
+.claude/settings.json
+
+# Pipeline runtime state
+errementari/pipeline/coordination.json

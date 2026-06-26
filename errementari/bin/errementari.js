@@ -137,11 +137,11 @@ function cmdExtractLearnings() {
 // ── CLI mode: delegate to the TypeScript CLI ─────────────────────────────────
 
 async function runCli(subcommand, args = []) {
-  const { initCommand } = await import("../src/commands/init.js")
-  const { upgradeCommand } = await import("../src/commands/upgrade.js")
-  const { statusCommand } = await import("../src/commands/status.js")
-  const { doctorCommand } = await import("../src/commands/doctor.js")
-  const { uninstallCommand } = await import("../src/commands/uninstall.js")
+  const { initCommand } = await import("../dist/commands/init.js")
+  const { upgradeCommand } = await import("../dist/commands/upgrade.js")
+  const { statusCommand } = await import("../dist/commands/status.js")
+  const { doctorCommand } = await import("../dist/commands/doctor.js")
+  const { uninstallCommand } = await import("../dist/commands/uninstall.js")
 
   switch (subcommand) {
     case "init": {
@@ -204,7 +204,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .option("-y, --yes", "Skip prompts and use detected values")
     .option("--dry-run", "Show what would be installed without writing files")
     .action(async (dir, options) => {
-      const { initCommand } = await import("../src/commands/init.js")
+      const { initCommand } = await import("../dist/commands/init.js")
       await initCommand(dir, options)
     })
 
@@ -214,7 +214,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .argument("[dir]", "Target project directory (defaults to CWD)")
     .option("--dry-run", "Preview what the upgrade would change without writing files")
     .action(async (dir, options) => {
-      const { upgradeCommand } = await import("../src/commands/upgrade.js")
+      const { upgradeCommand } = await import("../dist/commands/upgrade.js")
       await upgradeCommand(dir, options)
     })
 
@@ -223,7 +223,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .description("Show harness installation status")
     .argument("[dir]", "Target project directory (defaults to CWD)")
     .action((dir) => {
-      import("../src/commands/status.js").then(({ statusCommand }) => statusCommand(dir))
+      import("../dist/commands/status.js").then(({ statusCommand }) => statusCommand(dir))
     })
 
   program
@@ -231,7 +231,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .description("Check the health of a harness installation")
     .argument("[dir]", "Target project directory (defaults to CWD)")
     .action(async (dir) => {
-      const { doctorCommand } = await import("../src/commands/doctor.js")
+      const { doctorCommand } = await import("../dist/commands/doctor.js")
       await doctorCommand(dir)
     })
 
@@ -241,7 +241,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .argument("[dir]", "Target project directory (defaults to CWD)")
     .option("-y, --yes", "Skip confirmation prompt")
     .action(async (dir, options) => {
-      const { uninstallCommand } = await import("../src/commands/uninstall.js")
+      const { uninstallCommand } = await import("../dist/commands/uninstall.js")
       await uninstallCommand(dir, options)
     })
 
@@ -250,7 +250,7 @@ if (!cmd || cliCommands.has(cmd)) {
     .option("-y, --yes", "Skip prompts and use detected values")
     .option("--dry-run", "Show what would be installed without writing files")
     .action(async (dir, options) => {
-      const { initCommand } = await import("../src/commands/init.js")
+      const { initCommand } = await import("../dist/commands/init.js")
       await initCommand(dir, options)
     })
 

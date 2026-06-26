@@ -270,7 +270,7 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
     `if [ -f "$PLUGIN_SCRIPT" ]; then\n` +
     `  exec bash "$PLUGIN_SCRIPT" "$@"\n` +
     `else\n` +
-    `  echo "[errementari] Plugin not installed.\n` +
+    `  echo "[errementari] Plugin not installed."\n` +
     `  echo "  Option 1: npm install --prefix .opencode /path/to/errementari"\n` +
     `  echo "  Option 2: cd /path/to/errementari && npm link && npm link errementari --prefix .opencode"\n` +
     `  echo "  Option 3: publish errementari to npm, then: npm install --prefix .opencode" >&2\n` +
