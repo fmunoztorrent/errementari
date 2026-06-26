@@ -9,7 +9,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -133,7 +133,6 @@ ${blockers.length === 0
  */
 function writeSkillFile(skillsDir: string, agent: string, content: string): string {
   const agentSkillDir = join(skillsDir, `${agent}-learnings`);
-  const { mkdirSync } = require('node:fs');
   mkdirSync(agentSkillDir, { recursive: true });
   const skillPath = join(agentSkillDir, 'SKILL.md');
   writeFileSync(skillPath, content);

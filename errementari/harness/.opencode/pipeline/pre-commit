@@ -148,46 +148,35 @@ if [ -z "$WORKSPACE_FILE" ]; then
   exit 0  # Not a monorepo — skip test validation
 fi
 
-declare -A AFFECTED=()
+# Collect affected app dirs as a newline-delimited list. No associative arrays:
+# macOS ships bash 3.2, which lacks `declare -A`.
+AFFECTED=""
 HAS_SHARED=false
-HAS_SCRIPTS=false
 
 while IFS= read -r file; do
   case "$file" in
     apps/*/*)
-      app_dir=$(echo "$file" | cut -d'/' -f1-2)
-      AFFECTED["$app_dir"]=1
+      AFFECTED+="$(printf '%s' "$file" | cut -d'/' -f1-2)"$'\n'
       ;;
     packages/*/*)
       HAS_SHARED=true
       ;;
-    scripts/*)
-      HAS_SCRIPTS=true
-      ;;
-    *) ;; # config, .opencode, .claude — no tests needed
+    *) ;; # scripts, config, .opencode, .claude — no app tests needed
   esac
 done <<< "$STAGED_FILES"
 
 # Shared package change → all apps need testing
 if $HAS_SHARED; then
-  # Find all app directories
   for app_dir in "$ROOT"/apps/*/; do
-    if [ -d "$app_dir" ]; then
-      AFFECTED["apps/$(basename "$app_dir")"]=1
-    fi
+    [ -d "$app_dir" ] && AFFECTED+="apps/$(basename "$app_dir")"$'\n'
   done
 fi
 
-if [ ${#AFFECTED[@]} -gt 0 ]; then
+AFFECTED_LIST=$(printf '%s' "$AFFECTED" | grep -v '^$' | sort -u | xargs)
+
+if [ -n "$AFFECTED_LIST" ]; then
   echo ""
   echo "--- Test validation ---"
-
-  AFFECTED_LIST=""
-  for pkg in "${!AFFECTED[@]}"; do
-    AFFECTED_LIST="$AFFECTED_LIST $pkg"
-  done
-  AFFECTED_LIST=$(echo "$AFFECTED_LIST" | xargs -n1 | sort -u | xargs)
-
   echo "Packages affected by staged changes: $AFFECTED_LIST"
 
   FAILED_PKGS=""

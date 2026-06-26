@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import prompts from "prompts";
 import { detect, detectAvailableCLIs, detectExistingHarness } from "../detect.js";
 import { backupFile, extractSections, generateSummary, mergeClaudeMd } from "../reconcile.js";
@@ -13,15 +13,6 @@ import {
   rootDir,
 } from "../render.js";
 import type { MergeAction } from "../types.js";
-
-function _listFiles(dir: string, baseDir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) _listFiles(full, baseDir, out);
-    else out.push(relative(baseDir, full));
-  }
-  return out;
-}
 
 export async function initCommand(
   targetDir?: string,

@@ -1,9 +1,9 @@
-# Start checklist — Paso 0 del pipeline
+# Start checklist — Pipeline step 0
 
-Ejecutar **antes de crear el spec** (antes del Paso 1/6).
-Aplica tanto a `feature` como a `bugfix`.
+Run **before creating the spec** (before Step 1/6).
+Applies to both `feature` and `bugfix`.
 
-## Pasos
+## Steps
 
 ### 1. Pre-flight check
 
@@ -11,33 +11,33 @@ Aplica tanto a `feature` como a `bugfix`.
 bash .opencode/pipeline/pre-spec.sh
 ```
 
-Si el script sale con error, **detener aquí**. Resolver cada issue antes de continuar:
+If the script exits with an error, **stop here**. Resolve every issue before continuing:
 
-| Issue | Cómo resolverlo |
+| Issue | How to resolve it |
 |---|---|
-| Working tree sucio | `git add . && git commit` o `git stash -u` |
-| PRs abiertos | Mergear, cerrar o esperar decisión del equipo |
-| Commits huérfanos en dev (feat/fix) | Crear PR para capturarlos: `gh pr create --base main --head dev`. Son un **FAIL duro** — no se puede iniciar un spec hasta que dev esté limpio de feature work no mergeado a main |
-| Commits huérfanos (chore/learnings) | Ignorar — son artefactos de integración, no feature work |
-| Cierre pendiente | Ejecutar `close.md` para el scope indicado |
-| dev detrás de origin/main | `git checkout dev && git merge origin/main --no-edit` |
+| Dirty working tree | `git add . && git commit` or `git stash -u` |
+| Open PRs | Merge, close, or wait for the team's decision |
+| Orphan commits in dev (feat/fix) | Create a PR to capture them: `gh pr create --base main --head dev`. They are a **hard FAIL** — a spec cannot start until dev is clean of feature work not merged into main |
+| Orphan commits (chore/learnings) | Ignore — they are integration artifacts, not feature work |
+| Pending close | Run `close.md` for the indicated scope |
+| dev behind origin/main | `git checkout dev && git merge origin/main --no-edit` |
 
-### 2. Crear rama desde `origin/main`
+### 2. Create a branch from `origin/main`
 
 ```bash
 git fetch origin main
-git checkout -b <tipo>/<slug> origin/main
+git checkout -b <type>/<slug> origin/main
 ```
 
-**Convención de nombre:**
-- `feature/<descripcion-corta-kebab>`
-- `fix/<descripcion-corta-kebab>`
-- `chore/<descripcion-corta-kebab>`
+**Naming convention:**
+- `feature/<short-kebab-description>`
+- `fix/<short-kebab-description>`
+- `chore/<short-kebab-description>`
 
-⚠️ **Nunca** desde `dev`, `main` local, ni desde otra feature branch.
-Branching desde `dev` hereda commits de otras features y causa conflictos pesados al mergear a `main`.
+⚠️ **Never** from `dev`, local `main`, or another feature branch.
+Branching from `dev` inherits commits from other features and causes heavy conflicts when merging into `main`.
 
-### 3. Continuar con el pipeline normal
+### 3. Continue with the normal pipeline
 
-- **feature/bugfix:** avanzar al Paso 1/6 (`/spec-generator` o triage)
-- **chore:** ejecutar directamente (`scope → ejecutar → verify → close`)
+- **feature/bugfix:** advance to Step 1/6 (`/spec-generator` or triage)
+- **chore:** execute directly (`scope → execute → verify → close`)

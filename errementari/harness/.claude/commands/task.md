@@ -1,14 +1,14 @@
 ---
 name: task
-description: Invoca el pipeline automático para cualquier tipo de tarea (feature, bugfix, debug, chore). El agente principal clasifica y ejecuta el flujo completo con todowrite + anuncios de transición.
+description: Invokes the automatic pipeline for any task type (feature, bugfix, debug, chore). The main agent classifies and runs the full flow with todowrite + transition announcements.
 ---
 
-Usa este comando para que el pipeline se ejecute explícitamente:
+Use this command to run the pipeline explicitly:
 
-- `/task implementar login con Google` → pipeline feature
-- `/task bug: el SSE no reconecta` → pipeline bugfix
-- `/task debug: typecheck falla en sse-server` → pipeline debug
-- `/task cambiar LOG_LEVEL a debug en bff` → pipeline chore
-- `/task qué estructura tiene el BFF` → respuesta directa sin pipeline
+- `/task implement Google login` → feature pipeline (SDD + BDD + TDD + SPDD)
+- `/task bug: SSE doesn't reconnect` → bugfix pipeline (TDD + SPDD)
+- `/task chore: change LOG_LEVEL in bff` → chore pipeline (SPDD if app code)
+- `/task debug: typecheck fails in sse-server` → debug pipeline (read-only)
+- `/task what's the BFF structure` → direct answer, no pipeline
 
-El agente principal clasifica la tarea, crea el todowrite con los pasos del pipeline correspondiente, anuncia cada transición de agente y ejecuta secuencialmente invocando los sub-agentes que correspondan. Si no se usa el comando, el triaje automático en CLAUDE.md también dispara el pipeline.
+The main agent classifies the task and creates the todowrite with the corresponding pipeline steps. For any task that modifies application code, SPDD is mandatory: spdd-analysis → spdd-reasons-canvas → spdd-generate → spdd-sync.

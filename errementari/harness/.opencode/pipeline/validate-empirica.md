@@ -1,23 +1,36 @@
-# Validación Empírica (Paso 5b/6)
+# Empirical Validation (Step 5b/7)
 
-Este paso se ejecuta DESPUÉS de QA GREEN (tests + typecheck) y ANTES de Cierre. Solo se activa si la feature toca alguna de las áreas definidas abajo.
+This step runs AFTER QA GREEN (tests + typecheck + BDD scenarios) and BEFORE Close. It only activates if the feature touches any of the areas defined below.
 
-## Regla de activación
+## Traceability: empirical checks → spec
 
-| La feature toca... | Se ejecutan checks tipo... |
+Before running checks, map each check to a UST from the spec:
+
+```markdown
+| Check ID | UST | BDD Scenario | Expected result |
+|---|---|---|---|
+| A.2 | US-03 | No red screen on app load | No JS errors in logcat |
+| B.2 | US-01 | Happy path: GET /api/feature | HTTP 200 + valid JSON |
+```
+
+If a check fails, reference the UST it violates in the failure report.
+
+## Activation rule
+
+| The feature touches... | Checks to run... |
 |---|---|
 | `apps/mobile/` | A (Mobile UI) |
-| Nuevos `@Get|@Post|@Put|@Delete` en controllers | B (Endpoints REST) |
-| Hooks SSE o `apps/sse-server/` | C (SSE/Real-time) |
-| `package.json`, `docker-compose.yml`, `Makefile` | D (Infra/Dependencias) |
+| New `@Get|@Post|@Put|@Delete` in controllers | B (REST endpoints) |
+| SSE hooks or `apps/sse-server/` | C (SSE/Real-time) |
+| `package.json`, `docker-compose.yml`, `Makefile` | D (Infra/Dependencies) |
 
-## Bootstrap (ejecutar una vez)
+## Bootstrap (run once)
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 DEVICE="$(adb devices | awk '/emulator-[0-9]+[[:space:]]+device/{print $1; exit}')"
 ADB="adb${DEVICE:+ -s $DEVICE}"
-# Detección automática del motor de contenedores
+# Automatic container engine detection
 if command -v podman-compose >/dev/null 2>&1; then
   COMPOSE="podman-compose"
 elif command -v podman >/dev/null 2>&1; then
@@ -29,24 +42,24 @@ fi
 
 ## A — Mobile UI
 
-| Check | Qué valida | Comando | Señal de fallo |
+| Check | What it validates | Command | Failure signal |
 |---|---|---|---|
-| **A.1** Build Android | APK compila sin errores Gradle | `cd apps/mobile && pnpm android` | `BUILD FAILED` |
-| **A.2** No red screen | App carga sin errores JS fatales | `adb logcat -d \| grep ReactNativeJS \| grep -v INFO \| grep -v "Running"` | `TypeError`, `Invariant Violation` |
-| **A.3** UI elements | Nuevos componentes renderizan | `uiautomator dump` → grep testID/text del spec | Elemento ausente en el dump |
-| **A.4** SSE flow | Eventos SSE llegan a la UI | `pnpm inject` → `sleep 5` → `uiautomator dump` → badge/card actualizado | Elemento no aparece tras inject |
-| **A.5** No regressions | Vistas previas intactas | `uiautomator dump` → buscar "Solicitudes", cards, spinner | Elementos previos rotos/ausentes |
+| **A.1** Android build | APK compiles without Gradle errors | `cd apps/mobile && pnpm android` | `BUILD FAILED` |
+| **A.2** No red screen | App loads without fatal JS errors | `adb logcat -d \| grep ReactNativeJS \| grep -v INFO \| grep -v "Running"` | `TypeError`, `Invariant Violation` |
+| **A.3** UI elements | New components render | `uiautomator dump` → grep testID/text from the spec | Element missing from the dump |
+| **A.4** SSE flow | SSE events reach the UI | `pnpm inject` → `sleep 5` → `uiautomator dump` → badge/card updated | Element does not appear after inject |
+| **A.5** No regressions | Previous views intact | `uiautomator dump` → look for known cards, spinner | Previous elements broken/missing |
 
-### Procedimiento A
+### Procedure A
 
 ```bash
 # A.1 Build
 cd $REPO_ROOT/apps/mobile && pnpm android
-# Esperado: BUILD SUCCESSFUL
+# Expected: BUILD SUCCESSFUL
 
 # A.2 No red screen
 $ADB logcat -d | grep ReactNativeJS | grep -v INFO | grep -v "Running"
-# Esperado: sin output
+# Expected: no output
 
 # A.3 UI elements
 $ADB shell uiautomator dump /sdcard/ui.xml && $ADB pull /sdcard/ui.xml /tmp/ui.xml
@@ -59,7 +72,7 @@ for n in tree.iter():
     if text or desc:
         print(f'{desc} | {text}')
 "
-# Verificar que los testID/text del spec aparecen
+# Verify the testIDs/texts from the spec appear
 
 # A.4 SSE flow
 cd $REPO_ROOT && pnpm inject --type DISCOUNT --store-id store-1 --pos-id test-validation
@@ -89,21 +102,21 @@ for c in checks:
 "
 ```
 
-## B — Endpoints REST
+## B — REST endpoints
 
-| Check | Qué valida | Comando | Señal de fallo |
+| Check | What it validates | Command | Failure signal |
 |---|---|---|---|
-| **B.1** Rebuild + restart | Código compilado está actualizado | `nest build` + `pkill` + `node dist/main &` | `RoutesResolver` no muestra nueva ruta |
-| **B.2** Happy path | Endpoint responde 2xx | `curl -s -o /dev/null -w "%{http_code}" <url>` | No es 200/201 |
-| **B.3** Response schema | Estructura correcta | `curl -s <url> \| jq 'type'` | No es `"array"`/`"object"` |
-| **B.4** Error handling | Input inválido → 4xx | `curl -s -o /dev/null -w "%{http_code}" <url>?bad=1` | 500 en vez de 400/404 |
-| **B.5** BFF proxy | BFF forwardea correctamente | `diff <(curl -s <bff_url>) <(curl -s <auth_svc_url>)` | Respuestas diferentes |
+| **B.1** Rebuild + restart | Compiled code is up to date | `nest build` + `pkill` + `node dist/main &` | `RoutesResolver` does not show the new route |
+| **B.2** Happy path | Endpoint responds 2xx | `curl -s -o /dev/null -w "%{http_code}" <url>` | Not 200/201 |
+| **B.3** Response schema | Correct structure | `curl -s <url> \| jq 'type'` | Not `"array"`/`"object"` |
+| **B.4** Error handling | Invalid input → 4xx | `curl -s -o /dev/null -w "%{http_code}" <url>?bad=1` | 500 instead of 400/404 |
+| **B.5** BFF proxy | BFF forwards correctly | `diff <(curl -s <bff_url>) <(curl -s <auth_svc_url>)` | Different responses |
 
-### Procedimiento B
+### Procedure B
 
 ```bash
-# B.1 Rebuild + restart para cada servicio modificado
-SVC="authorization-service"  # o bff, sse-server
+# B.1 Rebuild + restart for each modified service
+SVC="authorization-service"  # or bff, sse-server
 cd $REPO_ROOT/apps/$SVC
 rm -f tsconfig*.tsbuildinfo
 node_modules/.bin/nest build
@@ -111,7 +124,7 @@ pkill -f "node dist/main" 2>/dev/null
 sleep 1
 node dist/main > /tmp/$SVC.log 2>&1 &
 sleep 3
-# Verificar ruta mapeada
+# Verify the route is mapped
 grep "Mapped.*<ROUTE>" /tmp/$SVC.log
 
 # B.2 Happy path
@@ -129,45 +142,45 @@ fi
 
 ## C — SSE / Real-time
 
-| Check | Qué valida | Comando | Señal de fallo |
+| Check | What it validates | Command | Failure signal |
 |---|---|---|---|
-| **C.1** Inject → arrival | Mensaje → SSE → UI en <5s | `pnpm inject` → `uiautomator dump` | Elemento no visible tras 5s |
-| **C.2** Kafka LAG | Consumer group al día | `kafka-consumer-groups --describe` | `LAG > 0` persistente |
-| **C.3** Reconnect | SSE reconecta tras corte | Kill BFF → restart → verificar banner | "Reconectando..." no desaparece |
+| **C.1** Inject → arrival | Message → SSE → UI in <5s | `pnpm inject` → `uiautomator dump` | Element not visible after 5s |
+| **C.2** Kafka LAG | Consumer group up to date | `kafka-consumer-groups --describe` | Persistent `LAG > 0` |
+| **C.3** Reconnect | SSE reconnects after a cut | Kill BFF → restart → check banner | "Reconnecting..." never disappears |
 
-## D — Infra / Dependencias
+## D — Infra / Dependencies
 
-| Check | Qué valida | Comando | Señal de fallo |
+| Check | What it validates | Command | Failure signal |
 |---|---|---|---|
-| **D.1** Native compat | Dependencia compatible con Kotlin | `grep kotlinVersion android/build.gradle` vs dep | Versión mínima > versión proyecto |
-| **D.2** Container health | Contenedores healthy | `$COMPOSE ps` | `exited`, `unhealthy` |
-| **D.3** Port binding | Sin conflictos de puertos | `lsof -i :3000 -i :3001 -i :3002 -P \| grep LISTEN` | Menos de 3 puertos LISTEN |
+| **D.1** Native compat | Dependency compatible with Kotlin | `grep kotlinVersion android/build.gradle` vs dep | Minimum version > project version |
+| **D.2** Container health | Containers healthy | `$COMPOSE ps` | `exited`, `unhealthy` |
+| **D.3** Port binding | No port conflicts | `lsof -i :3000 -i :3001 -i :3002 -P \| grep LISTEN` | Fewer than 3 LISTEN ports |
 
-## Ciclo de fallo
+## Failure cycle
 
 ```
-CHECK FALLA → volver a 3/6 QA RED
-     Se entrega al agente QA: el output exacto del check fallido
-     como especificación del bug a reproducir
+CHECK FAILS → go back to 3/6 QA RED
+     The QA agent receives: the exact output of the failed check
+     as the specification of the bug to reproduce
 
-TODOS CHECKS OK → 6/6 Cierre
+ALL CHECKS OK → 6/6 Close
 ```
 
-## Formato de reporte
+## Report format
 
 ```
 ── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  Paso 5b/6 · Validación Empírica
-  Tipo: [A] Mobile UI + [B] Endpoints REST
+  Step 5b/6 · Empirical Validation
+  Type: [A] Mobile UI + [B] REST endpoints
 ── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 
-[✓] A.1 Build Android           BUILD SUCCESSFUL in 19s
-[✓] A.2 No red screen           solo líneas INFO
-[✓] A.3 UI elements              todos los testID presentes
-[✓] B.1 Rebuild + restart       RoutesResolver muestra nueva ruta
+[✓] A.1 Android build           BUILD SUCCESSFUL in 19s
+[✓] A.2 No red screen           INFO lines only
+[✓] A.3 UI elements             all testIDs present
+[✓] B.1 Rebuild + restart       RoutesResolver shows the new route
 [✓] B.2 Happy path              HTTP 200
 
 ── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  Validación Empírica: 5/5 ✓
+  Empirical Validation: 5/5 ✓
 ── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 ```

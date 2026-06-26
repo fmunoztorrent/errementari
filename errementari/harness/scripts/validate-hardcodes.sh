@@ -23,32 +23,51 @@ if [ ! -f "$PATTERNS_FILE" ]; then
   exit 1
 fi
 
-# Extrae los patrones del JSON usando python3
-# Usa § como delimitador porque | aparece en las regex
-PATTERNS=$(python3 -c "
+# Parser JSON: python3 si está, node como fallback. Sin ninguno de los dos,
+# la validación se omite con aviso (no rompe el commit con un error críptico).
+# Delimitador: ASCII unit separator (\x1f). Debe ser single-byte — un
+# delimitador multibyte (ej. §) rompe IFS en bash y deja la regex vacía.
+if command -v python3 >/dev/null 2>&1; then
+  PATTERNS=$(python3 -c "
 import json, sys
-with open('$PATTERNS_FILE') as f:
+with open(sys.argv[1]) as f:
     data = json.load(f)
 for p in data['patterns']:
-    print(f\"{p['id']}§{p['regex']}§{p['suggestion']}\")
-")
-
-# Extrae la allowlist de archivos
-ALLOWLIST_FILES=$(python3 -c "
-import json
-with open('$PATTERNS_FILE') as f:
+    print(p['id'], p['regex'], p['suggestion'], sep='\x1f')
+" "$PATTERNS_FILE")
+  ALLOWLIST_FILES=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
     data = json.load(f)
-for f in data['allowlist']['files']:
+for f in data.get('allowlist', {}).get('files', []):
     print(f)
-" 2>/dev/null || echo "")
-
-ALLOWLIST_COMMENTS=$(python3 -c "
-import json
-with open('$PATTERNS_FILE') as f:
+" "$PATTERNS_FILE" 2>/dev/null || echo "")
+  ALLOWLIST_COMMENTS=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
     data = json.load(f)
-for c in data['allowlist']['comments']:
+for c in data.get('allowlist', {}).get('comments', []):
     print(c)
-" 2>/dev/null || echo "")
+" "$PATTERNS_FILE" 2>/dev/null || echo "")
+elif command -v node >/dev/null 2>&1; then
+  PATTERNS=$(node -e "
+const d = require(process.argv[1]);
+for (const p of d.patterns) console.log([p.id, p.regex, p.suggestion].join('\x1f'));
+" "$PATTERNS_FILE")
+  ALLOWLIST_FILES=$(node -e "
+const d = require(process.argv[1]);
+for (const f of (d.allowlist?.files ?? [])) console.log(f);
+" "$PATTERNS_FILE" 2>/dev/null || echo "")
+  ALLOWLIST_COMMENTS=$(node -e "
+const d = require(process.argv[1]);
+for (const c of (d.allowlist?.comments ?? [])) console.log(c);
+" "$PATTERNS_FILE" 2>/dev/null || echo "")
+else
+  echo "⚠ validate-hardcodes: ni python3 ni node disponibles — validación omitida." >&2
+  exit 0
+fi
+# grep -v "" matchearía TODAS las líneas y ocultaría cada hardcode detectado
+[ -z "$ALLOWLIST_COMMENTS" ] && ALLOWLIST_COMMENTS="__no_allowlist_comment__"
 
 # ── Funciones ────────────────────────────────────────────────────────────────
 
@@ -82,8 +101,8 @@ scan_file() {
 
   local file_had_hardcode=0
 
-  while IFS='§' read -r id regex suggestion; do
-    if [ -z "$id" ]; then continue; fi
+  while IFS=$'\x1f' read -r id regex suggestion; do
+    if [ -z "$id" ] || [ -z "$regex" ]; then continue; fi
 
     # Busca el patrón en el archivo, excluyendo líneas con allowlist comments
     local matches

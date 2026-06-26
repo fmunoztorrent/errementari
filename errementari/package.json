@@ -28,7 +28,8 @@
     "hooks/",
     ".claude-plugin/",
     "opencode-plugin.ts",
-    "settings.json"
+    "settings.json",
+    "harness/"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -37,6 +38,8 @@
     "test": "tsx --test src/*.test.ts",
     "lint": "biome check src",
     "format": "biome format --write src",
+    "sync:harness": "tsx scripts/sync-harness.ts",
+    "check:harness": "tsx scripts/sync-harness.ts --check",
     "prepare": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test"
   },

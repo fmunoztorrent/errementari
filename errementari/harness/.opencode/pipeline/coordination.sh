@@ -1,30 +1,30 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Coordinación de sesiones Claude Code ↔ opencode sobre el MISMO working tree.
+# Coordination of Claude Code ↔ opencode sessions over the SAME working tree.
 #
-# Problema que resuelve: dos herramientas agénticas (Claude Code y opencode)
-# operan sobre el mismo árbol de trabajo. Una operación git destructiva en una
-# (checkout -f, reset --hard, clean -f, ...) descarta cambios sin commitear o
-# borra archivos untracked de la otra. Esto causó pérdida de trabajo real.
+# Problem it solves: two agentic tools (Claude Code and opencode) operate on
+# the same working tree. A destructive git operation in one (checkout -f,
+# reset --hard, clean -f, ...) discards the other's uncommitted changes or
+# deletes its untracked files. This caused real work loss.
 #
-# Estado compartido: coordination.json (gitignored, por máquina). Registra qué
-# herramienta tiene una sesión viva y en qué rama. El guard NO se basa solo en
-# el registro: la protección de fondo es "¿el árbol está sucio?" — y el árbol es
-# compartido, así que protege a ambas herramientas por construcción.
+# Shared state: coordination.json (gitignored, per machine). Records which
+# tool has a live session and on which branch. The guard does NOT rely only on
+# the registry: the underlying protection is "is the tree dirty?" — and the
+# tree is shared, so it protects both tools by construction.
 #
-# Uso:
-#   coordination.sh register  <tool> [task]   # alta/heartbeat de sesión
-#   coordination.sh heartbeat <tool>          # actualiza heartbeat
-#   coordination.sh release   <tool>          # baja de sesión
-#   coordination.sh list                      # imprime el estado compartido
-#   coordination.sh guard-git "<comando>"     # exit 2 si destruiría cambios
+# Usage:
+#   coordination.sh register  <tool> [task]   # session registration/heartbeat
+#   coordination.sh heartbeat <tool>          # update heartbeat
+#   coordination.sh release   <tool>          # session removal
+#   coordination.sh list                      # print shared state
+#   coordination.sh guard-git "<command>"     # exit 2 if it would destroy changes
 #
-# Override puntual: COORD_OVERRIDE=1 <comando-que-se-bloquearía>
+# One-off override: COORD_OVERRIDE=1 <command-that-would-be-blocked>
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COORD_FILE="$SCRIPT_DIR/coordination.json"
-TTL_SECONDS=1800   # 30 min sin heartbeat ⇒ sesión muerta (se purga)
+TTL_SECONDS=1800   # 30 min without heartbeat ⇒ dead session (purged)
 PY="$(command -v python3 || true)"
 
 now_iso()     { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -35,7 +35,7 @@ cmd="${1:-}"; shift 2>/dev/null || true
 
 case "$cmd" in
   register|heartbeat)
-    [ -z "$PY" ] && exit 0   # sin python3 no coordinamos, pero no rompemos nada
+    [ -z "$PY" ] && exit 0   # without python3 we don't coordinate, but we don't break anything
     ensure_file
     TOOL="${1:-unknown}" TASK="${2:-}" BRANCH="$(repo_branch)" PID="${PPID:-0}" \
     NOW="$(now_iso)" TTL="$TTL_SECONDS" "$PY" - "$COORD_FILE" <<'PY'
@@ -96,20 +96,20 @@ PY
   guard-git)
     full="$*"
 
-    # ¿Operación git destructiva para el working tree?
-    # El git destructivo debe estar en POSICIÓN DE COMANDO (inicio de línea o
-    # tras ; && || | ( ) para no matchear menciones dentro de comillas, p.ej.
-    # echo "git reset --hard" o un mensaje de commit. grep procesa línea a línea.
+    # Is this a git operation destructive to the working tree?
+    # The destructive git must be in COMMAND POSITION (start of line or after
+    # ; && || | ( ) so we don't match mentions inside quotes, e.g.
+    # echo "git reset --hard" or a commit message. grep processes line by line.
     boundary='(^|[;&|(])[[:space:]]*'
     destructive_re="${boundary}git[[:space:]]+(reset[[:space:]]+--hard|clean[[:space:]]+-[a-zA-Z]*f|checkout[[:space:]]+-f|checkout[[:space:]]+--([[:space:]]|\$)|checkout[[:space:]]+\.|switch[[:space:]]+(-f|--discard-changes)|stash([[:space:]]|\$))"
     if ! printf '%s' "$full" | grep -Eq "$destructive_re"; then
-      exit 0   # no destructiva → permitir
+      exit 0   # not destructive → allow
     fi
 
     dirty="$(git status --porcelain 2>/dev/null)"
-    [ -z "$dirty" ] && exit 0   # árbol limpio → nada que perder
+    [ -z "$dirty" ] && exit 0   # clean tree → nothing to lose
 
-    # Info de otras sesiones vivas (solo para enriquecer el mensaje)
+    # Info on other live sessions (only to enrich the message)
     others=""
     if [ -n "$PY" ] && [ -f "$COORD_FILE" ]; then
       others="$(THIS="$(repo_branch)" "$PY" - "$COORD_FILE" <<'PY'
@@ -127,46 +127,46 @@ def age(ts):
 out = []
 for k, v in d.get("sessions", {}).items():
     if age(v.get("heartbeat", "")) <= 1800:
-        out.append(f"  • {v.get('tool', k)} en rama '{v.get('branch','?')}' (heartbeat {v.get('heartbeat','?')})")
+        out.append(f"  • {v.get('tool', k)} on branch '{v.get('branch','?')}' (heartbeat {v.get('heartbeat','?')})")
 print("\n".join(out))
 PY
 )"
     fi
 
-    # stash es recuperable (git stash list) → solo aviso, no bloqueo
+    # stash is recoverable (git stash list) → warn only, don't block
     if printf '%s' "$full" | grep -Eq "${boundary}git[[:space:]]+stash"; then
-      echo "[coordination] AVISO: '$full' con árbol sucio; stash es recuperable con 'git stash list'." >&2
+      echo "[coordination] WARNING: '$full' with a dirty tree; stash is recoverable via 'git stash list'." >&2
       exit 0
     fi
 
     if [ "${COORD_OVERRIDE:-0}" = "1" ]; then
-      echo "[coordination] OVERRIDE activo — se permite '$full' pese al árbol sucio." >&2
+      echo "[coordination] OVERRIDE active — allowing '$full' despite the dirty tree." >&2
       exit 0
     fi
 
     {
-      echo "[coordination] BLOQUEADO: '$full' destruiría cambios sin commitear del working tree compartido."
+      echo "[coordination] BLOCKED: '$full' would destroy uncommitted changes in the shared working tree."
       echo
-      echo "Cambios en riesgo:"
+      echo "Changes at risk:"
       printf '%s\n' "$dirty" | sed 's/^/  /'
       if [ -n "$others" ]; then
         echo
-        echo "Sesiones vivas detectadas:"
+        echo "Live sessions detected:"
         printf '%s\n' "$others"
       fi
       echo
-      echo "Esto es lo que causó pérdida de trabajo entre sesiones Claude/opencode."
-      echo "Antes de continuar, preservá el trabajo:"
-      echo "  • git add -A && git commit -m '...'   (recomendado), o"
-      echo "  • git stash -u                        (recuperable con git stash list)"
+      echo "This is what caused work loss between Claude/opencode sessions."
+      echo "Before continuing, preserve the work:"
+      echo "  • git add -A && git commit -m '...'   (recommended), or"
+      echo "  • git stash -u                        (recoverable via git stash list)"
       echo
-      echo "Forzar de todos modos: COORD_OVERRIDE=1 <comando>"
+      echo "Force anyway: COORD_OVERRIDE=1 <command>"
     } >&2
     exit 2
     ;;
 
   *)
-    echo "uso: coordination.sh {register|heartbeat|release|list|guard-git} ..." >&2
+    echo "usage: coordination.sh {register|heartbeat|release|list|guard-git} ..." >&2
     exit 1
     ;;
 esac

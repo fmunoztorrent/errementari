@@ -1,75 +1,82 @@
 # Close checklist
 
-Ejecutar **inmediatamente** cuando el último todo de un scope se marca como `completed`.
+Run **immediately** when the last todo of a scope is marked `completed`.
 
-## Pasos
+## Steps
 
-> **Precondición:** El paso **5b/6 Validación Empírica** (`.opencode/pipeline/validate-empirica.md`) debe haberse ejecutado y pasado todos los checks antes de iniciar el cierre. Si 5b falló, el pipeline volvió a QA RED y NO se debe cerrar.
+> **Precondition:** Step **5b/7 Empirical Validation** (`.opencode/pipeline/validate-empirica.md`) must have run and passed all checks before starting the close. If 5b failed, the pipeline went back to QA RED and you must NOT close.
+> 
+> **TDD precondition:** If the REFACTOR step (step 6) was not executed, verify mutation score >= 80% or document why it was skipped.
+> 
+> **BDD precondition:** Verify all Gherkin scenarios from `.feature` files pass. If any scenario is pending/undefined, do NOT close.
 
-### 1. Actualizar spec (si aplica)
+### 1. Update spec (if applicable)
 
-- Buscar el spec relacionado en `spec/` por fecha/asunto (formato: `<YYYY-MM-DD>-<slug>.spec.xml`)
-- Agregar entradas en `<result>`:
-  - `<completed-at>`: fecha de finalización
-  - `<implemented>`: USTs completadas con `[x]`
-  - `<deviations>`: si las hay
-  - `<tests>`: resumen de resultados
-- Cambiar `spec@status` de `draft` a `completed`
-- Marcar `<meta>/<archived>` como `true`
-- Incrementar `spec@revision` y agregar `<revision>` en `<history>`
-- **Mover el archivo** de `spec/<archivo>.spec.md` a `spec/archived/<archivo>.spec.md`
-- Si no hay spec asociado, saltar este paso
+- Find the related spec in `spec/` by date/subject
+- Add entries under `<result>`:
+  - `<completed-at>`: completion date
+  - `<implemented>`: completed USTs with `[x]`
+  - `<bdd-scenarios>`: count of BDD scenarios passing/failing
+  - `<mutation-score>`: final mutation score
+  - `<deviations>`: if any
+  - `<tests>`: results summary
+- Change `spec@status` from `draft` to `completed`
+- Set `<meta>/<archived>` to `true`
+- Increment `spec@revision` and add a `<revision>` entry to `<history>`
+- **Move the file** from `spec/<file>.spec.md` to `spec/archived/<file>.spec.md`
+- **Update `spec/registry.json`** — mark the spec as `completed`
+- If there is no associated spec, skip this step
 
-### 2. Fusionar rama actual en `dev` local (integración)
+### 2. Merge current branch into local `dev` (integration)
 
-> **⚠️ `dev` es permanente.** La rama `dev` **nunca** se elimina. Al limpiar
-> ramas después de una consolidación, solo se borran feature/bugfix/chore;
-> `dev` y `main` se preservan siempre.
+> **⚠️ `dev` is permanent.** The `dev` branch is **never** deleted. When cleaning
+> branches after a consolidation, only feature/bugfix/chore branches are deleted;
+> `dev` and `main` are always preserved.
 
-- **Objetivo:** integrar la rama actual a la rama `dev` local como punto de
-  integración temprana, antes de que el PR entre a review.
-- Ejecutar el helper: `.opencode/pipeline/merge-to-dev.sh`
-- El script se encarga de:
-  - Si la rama actual es `main` o `dev`: no hacer nada (evita noop).
-  - Si `dev` no existe: crearla desde `main` (`git branch dev main`).
-  - Si `dev` existe: hacer `git merge --no-ff` de la rama actual hacia `dev`.
-  - Si hay conflicto: aborta el merge (`git merge --abort`) y devuelve exit 2.
-- **⛔ Si `merge-to-dev.sh` retorna exit 2 (conflicto): STOP — no continuar al
-  paso 2b ni al 3.** Resolver el conflicto primero, luego reanudar desde este paso.
-- Al terminar sin conflicto, el worktree vuelve a la rama original automáticamente.
-- **Solo local:** este paso no hace `git push`. El push queda para cuando
-  se decida sincronizar el remoto (no se hace por defecto en el cierre).
-- Si se trabajó directamente en `main` sin spec, saltar este paso.
+- **Goal:** integrate the current branch into the local `dev` branch as an early
+  integration point, before the PR enters review.
+- Run the helper: `.opencode/pipeline/merge-to-dev.sh`
+- The script takes care of:
+  - If the current branch is `main` or `dev`: do nothing (avoids a noop).
+  - If `dev` does not exist: create it from `main` (`git branch dev main`).
+  - If `dev` exists: `git merge --no-ff` the current branch into `dev`.
+  - On conflict: aborts the merge (`git merge --abort`) and returns exit 2.
+- **⛔ If `merge-to-dev.sh` returns exit 2 (conflict): STOP — do not continue to
+  step 2b or 3.** Resolve the conflict first, then resume from this step.
+- When it finishes without conflict, the worktree returns to the original branch automatically.
+- **Local only:** this step does not `git push`. Pushing happens when you decide
+  to sync the remote (not done by default at close).
+- If the work was done directly on `main` without a spec, skip this step.
 
-### 2b. Verificar cobertura del PR (commits capturados)
+### 2b. Verify PR coverage (captured commits)
 
-> Este paso previene commits huérfanos en `dev` — el problema donde trabajo
-> hecho post-merge nunca llega a un PR.
+> This step prevents orphan commits in `dev` — the problem where work done
+> post-merge never reaches a PR.
 
 ```bash
 git log origin/main..HEAD --no-merges --oneline
 ```
 
-- Si la lista está **vacía**: no hay nada nuevo que subir — el PR no es necesario
-  (solo cambios de integración), saltar al paso 3 y omitir el push.
-- Si la lista tiene commits: **confirmar que todos están relacionados con esta feature**.
-  - Si hay commits que no deberían estar en esta rama (ej. se hicieron en `dev`
-    y no en la feature branch): **STOP** — mover esos commits a la rama correcta
-    antes de crear el PR.
-- Registrar mentalmente los commits para verificar que el PR los incluye todos.
+- If the list is **empty**: there is nothing new to push — the PR is unnecessary
+  (integration-only changes), skip to step 3 and omit the push.
+- If the list has commits: **confirm they are all related to this feature**.
+  - If there are commits that should not be on this branch (e.g. made on `dev`
+    instead of the feature branch): **STOP** — move those commits to the right
+    branch before creating the PR.
+- Mentally note the commits to verify the PR includes them all.
 
-### 3. Crear Pull Request
+### 3. Create Pull Request
 
-- Si se trabajó en una rama ad-hoc (no `main`):
+- If the work was done on an ad-hoc branch (not `main`):
   - `git push -u origin HEAD`
-  - Abrir PR en GitHub/GitLab usando `gh` o el navegador
-  - Asegurar que el PR apunte a `main` (no a `dev` — `dev` es solo integración local)
-- Si se trabajó directamente en `main` (solo cambios triviales sin spec), saltar este paso
-- No mergear el PR aún — marcar como "ready for review"
+  - Open a PR on GitHub/GitLab using `gh` or the browser
+  - Make sure the PR targets `main` (not `dev` — `dev` is local integration only)
+- If the work was done directly on `main` (trivial changes only, no spec), skip this step
+- Do not merge the PR yet — mark it "ready for review"
 
-### 3b. Post-merge: sincronizar dev con main
+### 3b. Post-merge: sync dev with main
 
-Ejecutar **después de que el PR sea mergeado a `main`** (puede ser inmediato o diferido):
+Run **after the PR is merged into `main`** (immediately or deferred):
 
 ```bash
 git fetch origin main
@@ -77,21 +84,21 @@ git checkout dev
 git merge origin/main --no-edit
 ```
 
-Luego verificar que no quedaron commits huérfanos:
+Then verify no orphan commits remain:
 
 ```bash
 git log origin/main..dev --no-merges --oneline
 ```
 
-- Si la lista está **vacía**: dev está limpio. ✓
-- Si hay commits de feature/fix: son huérfanos — crear un PR adicional para capturarlos.
-- Si hay commits de chore/learnings (archivar specs, auto-update hooks): son artefactos
-  legítimos de integración, no requieren PR adicional.
+- If the list is **empty**: dev is clean. ✓
+- If there are feature/fix commits: they are orphans — create an additional PR to capture them.
+- If there are chore/learnings commits (archiving specs, auto-update hooks): they are
+  legitimate integration artifacts, no additional PR required.
 
-### 4. Entrada en LEARNINGS.md
+### 4. LEARNINGS.md entry
 
-- Abrir `.claude/LEARNINGS.md`
-- Agregar entrada al final con el template estándar:
+- Open `.claude/LEARNINGS.md`
+- Append an entry using the standard template:
 
 ```markdown
 ---
@@ -99,80 +106,80 @@ date: YYYY-MM-DD
 agent: agent-type
 category: setup | pattern | api-gotcha | test-strategy | security-finding | spec-process | user-feedback
 tags: [tag1, tag2]
-slug: descripcion-corta-en-kebab-case
+slug: short-kebab-case-description
 ---
 
-**Contexto**: qué estaba haciendo cuando lo descubrí.
-**Qué pasó**: el comportamiento sorpresivo, el error, o la decisión.
-**Lección**: qué hacer / no hacer en el futuro.
-**Cómo aplicar**: en qué situaciones específicas recordar esto.
+**Context**: what I was doing when I discovered it.
+**What happened**: the surprising behavior, the error, or the decision.
+**Lesson**: what to do / not do in the future.
+**How to apply**: in which specific situations to remember this.
 ```
 
-- Preguntar al usuario si quiere agregar algo
-- Solo agregar si hay una lección no obvia
+- Ask the user if they want to add anything
+- Only add an entry if there is a non-obvious lesson
 
-### 4b. Extraer learning a skill de agente
+### 4b. Extract learning to agent skill
 
-- Ejecutar la extracción automática: `npx tsx scripts/extract-learnings.ts`
-- Esto lee la última entrada de LEARNINGS.md y actualiza el skill correspondiente en `.claude/skills/{agent}-learnings/SKILL.md`
-- Si una lección aparece por segunda vez, el script la promueve automáticamente a "Reglas activas"
-- Si una lección aparece por tercera vez, el script la agrega a "Accionables bloqueantes" en `.claude/AGENTS.md`
-- La extracción también se ejecuta automáticamente vía hooks del plugin y de Claude Code. Este paso manual es un fallback.
+- Run the automatic extraction: `npx tsx scripts/extract-learnings.ts`
+- This reads the latest LEARNINGS.md entry and updates the corresponding skill in `.claude/skills/{agent}-learnings/SKILL.md`
+- If a lesson appears a second time, the script automatically promotes it to "Active rules"
+- If a lesson appears a third time, the script adds it to "Blocking action items" in `.claude/AGENTS.md`
+- The extraction also runs automatically via the plugin's and Claude Code's hooks. This manual step is a fallback.
 
-### 4c. Automejora post-cierre (Paso 7)
+### 4c. Post-close self-improvement (Step 7)
 
-El paso 4b ejecuta `extract-learnings.ts`, que implementa 3 niveles de
-promoción automática de aprendizajes:
+Step 4b runs `extract-learnings.ts`, which implements 3 levels of automatic
+learning promotion:
 
-| Nivel | Condición | Acción | Archivo afectado |
+| Level | Condition | Action | Affected file |
 |-------|-----------|--------|-----------------|
-| **1** | 1ª ocurrencia de un slug | Agrega a "Lecciones recientes" | `.claude/skills/{agent}-learnings/SKILL.md` |
-| **2** | 2ª ocurrencia (≥2) | Mueve a "Reglas activas" con marcador `(x2,)` | `.claude/skills/{agent}-learnings/SKILL.md` |
-| **3** | 3ª ocurrencia (≥3) | Agrega a "Accionables bloqueantes" | `.claude/AGENTS.md` |
+| **1** | 1st occurrence of a slug | Adds to "Recent lessons" | `.claude/skills/{agent}-learnings/SKILL.md` |
+| **2** | 2nd occurrence (≥2) | Moves to "Active rules" with `(x2,)` marker | `.claude/skills/{agent}-learnings/SKILL.md` |
+| **3** | 3rd occurrence (≥3) | Adds to "Blocking action items" | `.claude/AGENTS.md` |
 
-Después de ejecutar `npx tsx scripts/extract-learnings.ts`, revisar la salida:
+After running `npx tsx scripts/extract-learnings.ts`, review the output:
 
-- Si la salida menciona **"level 3"** o **"AGENTS.md"**: revisar `.claude/AGENTS.md`
-  para confirmar que la entrada se agregó correctamente en la tabla de
-  `## Accionables bloqueantes (Nivel 3 — Auto-generados)`.
-- Si la salida menciona **"level 2"** o **"Reglas activas"**: revisar el skill
-  correspondiente en `.claude/skills/{agent}-learnings/SKILL.md`.
-- Si la salida menciona **"level 1"**: es una lección nueva, sin acción adicional.
+- If the output mentions **"level 3"** or **"AGENTS.md"**: check `.claude/AGENTS.md`
+  to confirm the entry was added correctly to the
+  `## Blocking action items (Level 3 — Auto-generated)` table.
+- If the output mentions **"level 2"** or **"Active rules"**: check the corresponding
+  skill in `.claude/skills/{agent}-learnings/SKILL.md`.
+- If the output mentions **"level 1"**: it is a new lesson, no further action.
 
-Commitear los cambios generados (skills actualizados + `AGENTS.md` si aplica).
-Si no hubo promociones (salida "nothing to do" o "skipping"), este paso no produce cambios.
+Commit the generated changes (updated skills + `AGENTS.md` if applicable).
+If there were no promotions (output "nothing to do" or "skipping"), this step produces no changes.
 
-El pipeline se vuelve más estricto con cada error que se repite 3 veces:
-la tabla de accionables bloqueantes sirve como referencia para futuros
-agentes y puede integrarse en validaciones automáticas.
+The pipeline gets stricter with every error that repeats 3 times:
+the blocking action items table serves as a reference for future agents and
+can be integrated into automatic validations.
 
-### 6. Revisar CLAUDE.md
+### 6. Review CLAUDE.md
 
-- ¿Cambió algo en la estructura del proyecto?
-- ¿Nuevos comandos que documentar?
-- ¿Nuevas convenciones o patrones?
-- ¿Nuevos skills configurados?
-- Actualizar solo si es relevante
+- Did anything change in the project structure?
+- New commands to document?
+- New conventions or patterns?
+- New skills configured?
+- Update only if relevant
 
-### 7. Limpiar close-pending
+### 7. Clean up close-pending
 
-- **Eliminar** `.opencode/pipeline/close-pending.json`:
+- **Delete** `.opencode/pipeline/close-pending.json`:
   ```bash
   rm -f .opencode/pipeline/close-pending.json
   git add .opencode/pipeline/close-pending.json
   ```
-- El historial de cierre queda en git (el commit que elimina el archivo) — no se necesita preservar el JSON.
-- Marcar `completed_at` en state.json para el scope cerrado.
+- The close history stays in git (the commit that deletes the file) — the JSON does not need preserving.
+- Set `completed_at` in state.json for the closed scope.
 
-### 8. Anunciar cierre
+### 8. Announce close
 
 ```
 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-  Cierre completado · <scope>
-  Spec: actualizado | no aplica
-  Merge a dev: OK | no aplica | conflict|reportado a usuario
-  PR: abierto | no aplica
-  LEARNINGS.md: entrada agregada | sin cambios
-  CLAUDE.md: actualizado | sin cambios
+  Close completed · <scope>
+  Spec: updated | not applicable
+  Merge to dev: OK | not applicable | conflict|reported to user
+  PR: open | not applicable
+  LEARNINGS.md: entry added | no changes
+  CLAUDE.md: updated | no changes
 ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 ```

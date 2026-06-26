@@ -1,9 +1,15 @@
 // Shared pipeline core — single source of truth for pipeline enforcement.
 //
 // Consumed by BOTH runtimes so the pipeline is enforced identically:
-//   - opencode:    .opencode/plugins/pipeline-enforcer.js  (imports this module)
-//   - Claude Code: .opencode/pipeline/pipeline-cli.mjs      (imports this module,
-//                  wired via PreToolUse/PostToolUse hooks in .claude/settings.json)
+//   - opencode:    opencode-plugin.ts (npm package entry point)
+//   - Claude Code: bin/errementari.js → pipeline/pipeline-core.mjs
+//                  (wired via hooks/hooks.json PreToolUse/PostToolUse)
+//
+// Path model (plugin installed via npm or as Claude Code plugin):
+//   Project-owned:  .opencode/pipeline/{state,close-pending,hardcode-patterns}.json
+//                   .opencode/pipeline/pre-spec.sh  (wrapper → plugin)
+//   Plugin-owned:   node_modules/errementari/pipeline/*
+//                   node_modules/errementari/scripts/*
 //
 // There must be NO divergence between the two. Any change to enforcement logic
 // goes here, once.
@@ -13,15 +19,45 @@ import { join, dirname } from "path"
 import { fileURLToPath } from "url"
 import { spawn, execSync } from "child_process"
 
+// Plugin root: where THIS file lives (e.g. node_modules/errementari/pipeline/)
 const __dirname = dirname(fileURLToPath(import.meta.url))
+export const PLUGIN_PIPELINE_DIR = __dirname
+export const PLUGIN_ROOT = dirname(__dirname)
 
-// This module lives in .opencode/pipeline/ — siblings are state/patterns/scripts.
-export const PIPELINE_DIR = __dirname
-export const STATE_PATH = join(__dirname, "state.json")
-export const CLOSE_PENDING_PATH = join(__dirname, "close-pending.json")
-export const PATTERNS_PATH = join(__dirname, "hardcode-patterns.json")
-export const PRE_SPEC_PATH = join(__dirname, "pre-spec.sh")
-export const REPO_ROOT = dirname(dirname(__dirname))
+// Repo root: detected via git, works from any location (plugin or project)
+function getRepoRoot() {
+  try {
+    return execSync("git rev-parse --show-toplevel", {
+      encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"]
+    }).trim()
+  } catch { return process.cwd() }
+}
+export const REPO_ROOT = getRepoRoot()
+const PROJECT_PIPELINE = join(REPO_ROOT, ".opencode", "pipeline")
+
+// Project-owned paths (created at runtime by the pipeline)
+export const STATE_PATH = join(PROJECT_PIPELINE, "state.json")
+export const CLOSE_PENDING_PATH = join(PROJECT_PIPELINE, "close-pending.json")
+
+// Patterns: project-specific (rendered by init with the project slug)
+export const PATTERNS_PATH = join(PROJECT_PIPELINE, "hardcode-patterns.json")
+
+// Pre-spec: wrapper script in the project, delegates to plugin
+const projectPreSpec = join(PROJECT_PIPELINE, "pre-spec.sh")
+const pluginPreSpec = join(PLUGIN_PIPELINE_DIR, "pre-spec.sh")
+export const PRE_SPEC_PATH = existsSync(projectPreSpec) ? projectPreSpec : pluginPreSpec
+
+// Scripts: prefer project wrappers, fallback to plugin
+const projectScripts = join(REPO_ROOT, "scripts")
+const pluginScripts = join(PLUGIN_ROOT, "scripts")
+function resolveScript(relativePath) {
+  const proj = join(projectScripts, relativePath)
+  const plug = join(pluginScripts, relativePath)
+  if (existsSync(proj)) return proj
+  if (existsSync(plug)) return plug
+  // if neither exists, return the project path (will fail gracefully)
+  return proj
+}
 
 export const SCOPE_REGEX = /^\[([\w.-]+)\]\s*/
 export const EDIT_TOOLS = new Set(["edit", "write"])
@@ -125,11 +161,14 @@ export function runPreSpecCheck(scopeName) {
     })
   } catch (e) {
     const out = (e.stdout || "") + (e.stderr || "")
-    throw new Error(
+    const cmd = existsSync(projectPreSpec)
+    ? "bash .opencode/pipeline/pre-spec.sh"
+    : "bash node_modules/errementari/pipeline/pre-spec.sh"
+  throw new Error(
       `Pre-spec check failed while activating scope '${scopeName}'.\n` +
         `Resolve the issues before starting the pipeline:\n\n` +
         out +
-        `\nRun: bash .opencode/pipeline/pre-spec.sh to see the full details.\n`
+        `\nRun: ${cmd} to see the full details.\n`
     )
   }
 }
@@ -230,7 +269,8 @@ export function extractLearningsAfterClose() {
     return
   }
 
-  const child = spawn("npx", ["-y", "tsx", "scripts/extract-learnings.ts"], {
+  const extractPath = resolveScript("extract-learnings.ts")
+  const child = spawn("npx", ["-y", "tsx", extractPath], {
     cwd: REPO_ROOT,
     timeout: 10_000,
     stdio: ["ignore", "pipe", "pipe"],
@@ -352,31 +392,44 @@ export const PIPELINE_BLOCK_MESSAGE = `Pipeline enforcement: you cannot edit fil
 
 Run todowrite with the corresponding pipeline.
 
-Multi-scope format (several independent tasks):
+Feature pipeline (SDD + BDD + TDD + SPDD):
 
 [feature.my-feature]
-[▶] 1/6 Spec Generator → spec with REASONS Canvas
-[ ] 2/6 Architect → validate technical feasibility
-[ ] 3/6 QA (RED) → failing tests
-[ ] 4/6 Implementation → code
-[ ] 5/6 QA (GREEN) → full suite
-[ ] 6/6 Close → close checklist
+[▶] 1/7 SPDD Analysis + REASONS Canvas + BDD scenarios
+[ ] 2/7 Architect → validate Canvas
+[ ] 3/7 QA (RED) → failing tests + step definitions
+[ ] 4/7 SPDD Generate → code from Canvas (TDD)
+[ ] 5/7 QA (GREEN) → full suite + mutation + empirical
+[ ] 6/7 Refactor → spdd-sync (if mutation < 80%)
+[ ] 7/7 Close → merge dev, PR, learnings
+
+Bugfix pipeline (TDD + SPDD):
 
 [bugfix.my-fix]
-[▶] 1/5 Triage → confirm the bug
-[ ] 2/5 Reproduce → failing test
-[ ] 3/5 Fix → correct
-[ ] 4/5 Verify → tests + typecheck
-[ ] 5/5 Close → close checklist
+[▶] 1/6 Triage + SPDD Analysis + Canvas
+[ ] 2/6 Reproduce → failing test
+[ ] 3/6 Architect (optional)
+[ ] 4/6 SPDD Generate + Fix
+[ ] 5/6 Verify + spdd-sync
+[ ] 6/6 Close
+
+Chore pipeline (SPDD if app code):
+
+[chore.my-chore]
+[▶] 1/5 Scope + Analysis (if app code) + Canvas
+[ ] 2/5 Execute → SPDD Generate
+[ ] 3/5 Verify → tests + typecheck + spdd-sync
+[ ] 4/5 Close
 
 Or a single scope (single task):
 
-[▶] 1/6 Spec Generator → spec with REASONS Canvas
-[ ] 2/6 Architect
-[ ] 3/6 QA (RED)
-[ ] 4/6 Implementation
-[ ] 5/6 QA (GREEN)
-[ ] 6/6 Close
+[▶] 1/7 SPDD Analysis + Canvas
+[ ] 2/7 Architect
+[ ] 3/7 QA (RED)
+[ ] 4/7 SPDD Generate
+[ ] 5/7 QA (GREEN)
+[ ] 6/7 Refactor
+[ ] 7/7 Close
 `
 
 export function evaluateEdit({ tool, filePath = "", content = "" }) {
