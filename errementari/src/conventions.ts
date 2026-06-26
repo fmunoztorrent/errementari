@@ -201,13 +201,21 @@ export function generateProjectConventions(ctx: ProjectContext): string {
 
   if (ctx.usesVite) {
     lines.push("### Vite conventions");
-    lines.push("- TypeScript: `tsc` is **typecheck-only**. `tsconfig.json` must have `\"noEmit\": true`.");
-    lines.push("- Never run `tsc -b` without `--noEmit` — emitted `.js` files interfere with Vite's bundler.");
+    lines.push(
+      '- TypeScript: `tsc` is **typecheck-only**. `tsconfig.json` must have `"noEmit": true`.',
+    );
+    lines.push(
+      "- Never run `tsc -b` without `--noEmit` — emitted `.js` files interfere with Vite's bundler.",
+    );
     lines.push("- Build is done by Vite, not `tsc`.");
     if (ctx.usesSSG) {
       lines.push("- **SSG data loading**: Use `import.meta.glob` for file content, not `node:fs`.");
-      lines.push("- Wrap server-only imports with `if (!import.meta.env.SSR)` guard in React Router loaders.");
-      lines.push("- Node builtins (`node:fs`, `node:path`) are not bundled for client — they must be in loaders.");
+      lines.push(
+        "- Wrap server-only imports with `if (!import.meta.env.SSR)` guard in React Router loaders.",
+      );
+      lines.push(
+        "- Node builtins (`node:fs`, `node:path`) are not bundled for client — they must be in loaders.",
+      );
     }
     lines.push("");
   }

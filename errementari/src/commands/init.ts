@@ -1,6 +1,6 @@
-import { execSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
-import { join, relative, resolve } from "path";
+import { execSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import prompts from "prompts";
 import { detect, detectAvailableCLIs, detectExistingHarness } from "../detect.js";
 import { backupFile, extractSections, generateSummary, mergeClaudeMd } from "../reconcile.js";
@@ -14,10 +14,10 @@ import {
 } from "../render.js";
 import type { MergeAction } from "../types.js";
 
-function listFiles(dir: string, baseDir: string, out: string[] = []): string[] {
+function _listFiles(dir: string, baseDir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) listFiles(full, baseDir, out);
+    if (statSync(full).isDirectory()) _listFiles(full, baseDir, out);
     else out.push(relative(baseDir, full));
   }
   return out;
@@ -332,7 +332,7 @@ export async function initCommand(
       console.log("  Installing opencode plugin dependencies...");
       execSync("npm install --no-save", { cwd: opencodeDir, stdio: "inherit" });
       console.log("  ✓ Plugin dependencies installed");
-    } catch (err: unknown) {
+    } catch (_err: unknown) {
       // npm install may fail because errementari isn't published on the public registry.
       // Fall back to installing from the local Errementari source checkout.
       const errementariSource = rootDir();
@@ -343,10 +343,12 @@ export async function initCommand(
           stdio: "inherit",
         });
         console.log("  ✓ Plugin installed from local path");
-      } catch (err2: unknown) {
+      } catch (_err2: unknown) {
         console.log("  ⚠ Could not install plugin dependencies. Run manually:");
         console.log(`    cd ${opencodeDir} && npm install "${errementariSource}"`);
-        console.log("    or: cd ${errementariSource} && npm link && cd ${opencodeDir} && npm link errementari");
+        console.log(
+          "    or: cd ${errementariSource} && npm link && cd ${opencodeDir} && npm link errementari",
+        );
       }
     }
   }

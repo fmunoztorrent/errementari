@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -8,10 +8,10 @@ import {
   readFileSync,
   statSync,
   writeFileSync,
-} from "fs";
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Handlebars from "handlebars";
-import { basename, dirname, join, relative } from "path";
-import { fileURLToPath } from "url";
 import type { Manifest, ManifestEntry, ProjectContext } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -277,7 +277,7 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
     `  exit 1\n` +
     `fi\n`;
 
-  const wrapperJs = (pluginPath: string): string =>
+  const _wrapperJs = (pluginPath: string): string =>
     `// Errementari wrapper — delegates to the installed plugin.\n` +
     `import { execSync } from "child_process";\n` +
     `function getRoot() { try { return execSync("git rev-parse --show-toplevel", {encoding:"utf-8"}).trim() } catch { return process.cwd() } }\n` +
@@ -370,17 +370,16 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
 
   // opencode npm deps: pull errementari as dependency
   const opencodePkgPath = join(opencodeDir, "package.json");
-  const opencodePkgContent =
-    JSON.stringify(
-      {
-        name: "opencode-plugins",
-        private: true,
-        type: "module",
-        dependencies: { errementari: `^${version}` },
-      },
-      null,
-      2,
-    ) + "\n";
+  const opencodePkgContent = `${JSON.stringify(
+    {
+      name: "opencode-plugins",
+      private: true,
+      type: "module",
+      dependencies: { errementari: `^${version}` },
+    },
+    null,
+    2,
+  )}\n`;
   const opencodePkgHash = fileHash(opencodePkgContent);
   if (!existsSync(opencodePkgPath)) {
     writeFileSync(opencodePkgPath, opencodePkgContent);
