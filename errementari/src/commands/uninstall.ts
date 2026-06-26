@@ -1,6 +1,6 @@
-import { execSync } from "child_process";
-import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { execSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import prompts from "prompts";
 import { fileHash, readManifest } from "../render.js";
 

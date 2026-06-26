@@ -8,8 +8,8 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-} from "fs";
-import { join, relative, resolve } from "path";
+} from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { detect } from "../detect.js";
 import {
   fileHash,

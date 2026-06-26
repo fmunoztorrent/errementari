@@ -159,6 +159,7 @@ function makeFakeCtx(): ProjectContext {
     hasDocker: false,
     hasFirebase: false,
     usesVite: true,
+    usesSSG: false,
     usesBDD: false,
     permCommands: ["pnpm test", "pnpm lint", "pnpm typecheck"],
     selectedCLIs: ["claude", "opencode"],

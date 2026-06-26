@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import { compareVersions, upgradeCommand } from "./commands/upgrade.js";
 import { detect } from "./detect.js";
 import { init, readManifest } from "./render.js";
@@ -62,7 +62,7 @@ test("upgrade preserves user-modified generic files", async () => {
   try {
     setupInstalledProject(root);
     const checkSh = join(root, ".opencode", "pipeline", "check.sh");
-    const customized = readFileSync(checkSh, "utf-8") + "\n# my custom tweak\n";
+    const customized = `${readFileSync(checkSh, "utf-8")}\n# my custom tweak\n`;
     writeFileSync(checkSh, customized);
     markInstalledVersion(root, "0.9.0");
 
@@ -79,7 +79,7 @@ test("upgrade preserves user-modified templates", async () => {
   try {
     setupInstalledProject(root);
     const claudeMd = join(root, "CLAUDE.md");
-    const customized = readFileSync(claudeMd, "utf-8") + "\n## My project notes\n";
+    const customized = `${readFileSync(claudeMd, "utf-8")}\n## My project notes\n`;
     writeFileSync(claudeMd, customized);
     markInstalledVersion(root, "0.9.0");
 
@@ -205,7 +205,7 @@ test("upgrade --dry-run writes nothing", async () => {
   try {
     setupInstalledProject(root);
     const checkSh = join(root, ".opencode", "pipeline", "check.sh");
-    const customized = readFileSync(checkSh, "utf-8") + "\n# tweak\n";
+    const customized = `${readFileSync(checkSh, "utf-8")}\n# tweak\n`;
     writeFileSync(checkSh, customized);
     markInstalledVersion(root, "0.9.0");
 

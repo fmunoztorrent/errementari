@@ -1,6 +1,6 @@
-import { execSync } from "child_process";
-import { existsSync, readFileSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { execSync } from "node:child_process";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { readManifest, rootDir } from "../render.js";
 import { compareVersions } from "./upgrade.js";
 

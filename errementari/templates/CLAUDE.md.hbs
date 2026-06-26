@@ -249,6 +249,12 @@ The harness mechanically blocks the introduction of hardcoded values at three le
 {{#if hasFirebase}}
 - **Firebase**: config via environment variables, never commit `.firebaserc` with secrets
 {{/if}}
+{{#if usesVite}}
+- **Vite + TypeScript**: `tsc` is **typecheck-only**. `tsconfig.json` must have `"noEmit": true`. Never run `tsc -b` without `--noEmit` — emitted `.js` files interfere with Vite's bundler and cause `MISSING_EXPORT` errors in SSG builds. Build is done by Vite (`vite build` or `vite-react-ssg build`), not `tsc`.
+{{/if}}
+{{#if usesSSG}}
+- **SSG data loading**: Use `import.meta.glob` for importing file content at build time, not `node:fs`. Node builtins (`node:fs`, `node:path`) are not bundled for the client. When using React Router loaders with `vite-react-ssg`, wrap server-only imports with `if (!import.meta.env.SSR)` guard so the bundler tree-shakes them from the client bundle.
+{{/if}}
 
 ## Plugin architecture
 

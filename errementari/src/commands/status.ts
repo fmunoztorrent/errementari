@@ -1,4 +1,4 @@
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { readManifest } from "../render.js";
 
 export function statusCommand(targetDir?: string) {
