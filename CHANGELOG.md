@@ -12,15 +12,21 @@ command moves installed harnesses between these versions.
 - **Vite `noEmit` convention** — projects detected as using Vite now document in CLAUDE.md that `tsc` is typecheck-only (`noEmit: true` required in `tsconfig.json`) to prevent stale `.js` files from interfering with Vite's bundler.
 - **SSG detection** — `detect.ts` now sets `usesSSG: true` when the project has `vite-react-ssg`, `vite-plugin-ssr`, `vite-ssg`, `astro`, or `vite-plugin-react-pages` in dependencies.
 - **SSG data loading convention** — SSG projects document the `import.meta.glob` pattern as the Vite-native alternative to `node:fs` for file content loading, with the `if (!import.meta.env.SSR)` guard for React Router loaders.
+- **`CONTRIBUTING.md`** — contribution guide covering setup, the SPDD/SDD/BDD/TDD pipeline, branch/PR conventions, and the release process.
+- **npm distribution** — README documents `npx errementari` / `npm i -g errementari` as the primary install path; `publishConfig.access: public` added to `package.json`.
+- **Release workflow** — `.github/workflows/release.yml` runs typecheck/lint/test/build and publishes to npm on `v*` tags via the `NPM_TOKEN` secret.
 
 ### Changed
 
 - **Local install fallback** — when `npm install` fails in `.opencode/` (because `errementari` is not published on the public npm registry), `init` now falls back to installing from the local Errementari source checkout.
 - **Wrapper error message** — when the pipeline plugin is not installed, the error now lists 3 actionable options: install from local path, use `npm link`, or publish to npm.
+- **README rewritten for the monorepo layout** — install and development instructions use the `errementari/` subpackage and pnpm; the entry point is `bin/errementari.js`.
 
 ### Fixed
 
 - **`ProjectContext` missing `usesSSG` field** — added to `types.ts` and all test fixtures.
+- **Local-install fallback hint printed literal `${...}`** — the `init` fallback message was a plain string instead of a template literal, so it showed `${errementariSource}`/`${opencodeDir}` verbatim. Now interpolated (also clears the Biome `noTemplateCurlyInString` warning).
+- **Claude Code edit enforcement was inert** — the generated `.claude/settings.json` hooks (`guard-edit`, `check-activation`, `sync-todos`) ran `node .opencode/pipeline/pipeline-cli.mjs`, but `init` never installed that file there (only the bash wrappers), so the hooks failed silently and never blocked edits. `init` now installs a `pipeline-cli.mjs` wrapper that resolves the plugin from the repo root **or** `.opencode/node_modules/` and delegates to it, so block exit codes (2) propagate. Run `errementari upgrade` to add it to existing installs.
 
 ## [1.1.0] — 2026-06-10
 

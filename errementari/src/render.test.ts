@@ -218,3 +218,42 @@ test("init renders hardcode-patterns.json with the project slug", () => {
     cleanup();
   }
 });
+
+test("every settings.json hook that runs `node .opencode/pipeline/<file>` is installed on disk", () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    setupMonorepoFixture(root);
+    init(root, detect(root));
+
+    const settings = JSON.parse(readFileSync(join(root, ".claude", "settings.json"), "utf-8"));
+    const commands: string[] = [];
+    type HookGroup = Array<{ hooks: Array<{ command: string }> }>;
+    for (const group of Object.values(settings.hooks) as HookGroup[]) {
+      for (const matcher of group) {
+        for (const h of matcher.hooks) commands.push(h.command);
+      }
+    }
+
+    // Collect `node .opencode/pipeline/<file>` references and assert each exists.
+    const referenced = commands
+      .map((c) => /node (\.opencode\/pipeline\/[^\s]+)/.exec(c)?.[1])
+      .filter((p): p is string => Boolean(p));
+
+    assert.ok(
+      referenced.includes(".opencode/pipeline/pipeline-cli.mjs"),
+      "guard-edit/check-activation/sync-todos hooks should reference pipeline-cli.mjs",
+    );
+    for (const rel of referenced) {
+      assert.ok(existsSync(join(root, rel)), `hook references a file init never installs: ${rel}`);
+    }
+
+    // The JS wrapper must delegate to the installed plugin, not contain logic.
+    const wrapper = readFileSync(join(root, ".opencode", "pipeline", "pipeline-cli.mjs"), "utf-8");
+    assert.ok(
+      wrapper.includes("node_modules/errementari/pipeline/pipeline-cli.mjs"),
+      "wrapper must delegate to the node_modules plugin",
+    );
+  } finally {
+    cleanup();
+  }
+});

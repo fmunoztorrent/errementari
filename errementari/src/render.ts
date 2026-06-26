@@ -277,12 +277,24 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
     `  exit 1\n` +
     `fi\n`;
 
-  const _wrapperJs = (pluginPath: string): string =>
+  // JS counterpart of wrapperScript: the Claude Code hooks call this via
+  // `node .opencode/pipeline/pipeline-cli.mjs <cmd>`. It resolves errementari
+  // from the repo root or the .opencode/ install, then runs the real CLI by
+  // import so process.argv, stdin and the exit code (2 = block) all propagate.
+  const wrapperJs = (pluginPath: string): string =>
     `// Errementari wrapper — delegates to the installed plugin.\n` +
-    `import { execSync } from "child_process";\n` +
-    `function getRoot() { try { return execSync("git rev-parse --show-toplevel", {encoding:"utf-8"}).trim() } catch { return process.cwd() } }\n` +
-    `const plug = getRoot() + "/node_modules/errementari/${pluginPath}";\n` +
-    `import(plug.startsWith("file://") ? plug : "file://" + plug).then(m => m.default?.()).catch(() => {})\n`;
+    `import { execSync } from "node:child_process";\n` +
+    `import { existsSync } from "node:fs";\n` +
+    `function root() {\n` +
+    `  try { return execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim(); }\n` +
+    `  catch { return process.cwd(); }\n` +
+    `}\n` +
+    `const base = root();\n` +
+    `const plug = [\n` +
+    `  base + "/node_modules/errementari/${pluginPath}",\n` +
+    `  base + "/.opencode/node_modules/errementari/${pluginPath}",\n` +
+    `].find((p) => existsSync(p));\n` +
+    `if (plug) await import("file://" + plug);\n`;
 
   const wrappers: Array<{ dest: string; content: string; mode?: number }> = [
     { dest: "pre-spec.sh", content: wrapperScript("pipeline/pre-spec.sh"), mode: 0o755 },
@@ -295,6 +307,8 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
       mode: 0o755,
     },
     { dest: "pre-commit", content: wrapperScript("pipeline/pre-commit"), mode: 0o755 },
+    // JS wrapper consumed by the Claude Code Edit/Write/TodoWrite hooks.
+    { dest: "pipeline-cli.mjs", content: wrapperJs("pipeline/pipeline-cli.mjs") },
   ];
 
   for (const w of wrappers) {
