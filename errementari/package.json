@@ -1,6 +1,6 @@
 {
   "name": "errementari",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Dual-tool (Claude Code + OpenCode) TDD/BDD/SDD/SPDD pipeline plugin. Enforces structured prompt-driven development with specialized sub-agents.",
   "repository": {
     "type": "git",
@@ -57,6 +57,9 @@
     "spec-driven"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "dependencies": {
     "commander": "^12.1.0",

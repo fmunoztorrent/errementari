@@ -131,7 +131,7 @@ export async function initCommand(
       console.log("");
     }
     const mappings = getTemplateMappings(ctx);
-    const wrapperCount = 6; // pipeline wrappers
+    const wrapperCount = 7; // pipeline wrappers (6 bash + pipeline-cli.mjs)
     const staticCount = 2; // .opencode/package.json + .gitignore
     console.log(
       `  [dry-run] Would install ${mappings.length + staticCount + wrapperCount + 1} items:`,
@@ -347,7 +347,7 @@ export async function initCommand(
         console.log("  ⚠ Could not install plugin dependencies. Run manually:");
         console.log(`    cd ${opencodeDir} && npm install "${errementariSource}"`);
         console.log(
-          "    or: cd ${errementariSource} && npm link && cd ${opencodeDir} && npm link errementari",
+          `    or: cd ${errementariSource} && npm link && cd ${opencodeDir} && npm link errementari`,
         );
       }
     }

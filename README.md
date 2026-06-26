@@ -50,21 +50,37 @@ your-project/
 
 ## Install
 
-### From a local checkout
+### From npm (recommended)
 
 ```bash
-git clone <repo-url> errementari
-cd errementari
-npm install        # `prepare` runs the TypeScript build automatically
-npm link           # exposes the `errementari` command globally
+npx errementari init          # run once inside your project, no global install
+# or install globally:
+npm install -g errementari
 ```
 
-After this, `errementari` is available system-wide.
+Upgrading the CLI itself is then a plain `npx errementari@latest` /
+`npm i -g errementari@latest`. (To upgrade an *installed harness* inside a
+project, use `errementari upgrade` — see below.)
+
+### From a local checkout
+
+The repository is a pnpm workspace; the publishable package lives in the
+`errementari/` subdirectory.
+
+```bash
+git clone https://github.com/fmunoztorrent/errementari.git
+cd errementari
+pnpm install                  # `prepare` builds errementari/dist automatically
+cd errementari && npm link    # the bin lives in the subpackage, link from there
+```
+
+After this, `errementari` is available system-wide. (The repo root is a private
+workspace with no `bin`, so the link must run from the `errementari/` subpackage.)
 
 ### One-shot (without linking)
 
 ```bash
-node /path/to/errementari/bin/cli.js <command>
+node /path/to/errementari/errementari/bin/errementari.js <command>
 ```
 
 ## Commands
@@ -216,16 +232,30 @@ Anything in `.opencode/pipeline/` is harness-owned. Edit only if you're sure; th
 
 ## Development
 
+Errementari is a pnpm workspace; the package lives in `errementari/`. Run scripts
+through pnpm's filter (or `cd errementari` first):
+
 ```bash
-npm install
-npm run dev -- init --help     # run the CLI from TS source via tsx
-npm run typecheck
-npm test                       # node:test suites under src/*.test.ts
-npm run lint                   # Biome
-npm run build                  # emits dist/
+pnpm install                                       # installs deps + builds via `prepare`
+pnpm --filter errementari run dev -- init --help   # run the CLI from TS source via tsx
+pnpm --filter errementari run typecheck
+pnpm --filter errementari test                     # node:test suites under src/*.test.ts
+pnpm --filter errementari run lint                 # Biome
+pnpm --filter errementari run build                # emits errementari/dist/
 ```
 
-The `prepare` lifecycle script builds automatically on `npm install`, so consumers who install from a git URL get a working `bin/cli.js`.
+> **Toolchain:** the published CLI runs on Node ≥ 20, but development and CI
+> require Node ≥ 22.13 and pnpm 11 (pnpm 11's own engine constraint).
+
+The `prepare` lifecycle script builds automatically on install, so consumers who
+install from a git URL get a working `bin/errementari.js`.
+
+## Contributing
+
+Contributions are welcome. Errementari dogfoods its own pipeline, so changes flow
+through the same SPDD + SDD + BDD + TDD steps the harness enforces. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, the test/lint/typecheck commands,
+branch and PR conventions, and the release process.
 
 ## License
 
