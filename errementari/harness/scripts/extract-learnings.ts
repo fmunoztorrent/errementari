@@ -14,13 +14,26 @@
  *   npx tsx scripts/extract-learnings.ts --dry-run  # simula sin modificar archivos
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { resolve, dirname } from "path";
+import { execSync } from "child_process";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { resolve } from "path";
 
 // ── Config ───────────────────────────────────────────────────────────────
 
-// Se ejecuta con tsx, que soporta __dirname en modo CJS
-const REPO_ROOT = resolve(__dirname, "..");
+// No usar __dirname: tsx ejecuta en modo ESM cuando el proyecto destino tiene
+// "type": "module" y ahí __dirname no existe. La raíz del repo se resuelve
+// vía git (los hooks/plugins siempre invocan este script desde la raíz).
+function detectRepoRoot(): string {
+  try {
+    return execSync("git rev-parse --show-toplevel", {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return process.cwd();
+  }
+}
+const REPO_ROOT = detectRepoRoot();
 const LEARNINGS_PATH = resolve(REPO_ROOT, ".claude", "LEARNINGS.md");
 const SKILLS_DIR = resolve(REPO_ROOT, ".claude", "skills");
 const AGENTS_PATH = resolve(REPO_ROOT, ".claude", "AGENTS.md");
@@ -571,8 +584,11 @@ function main(): void {
   extractAndPromote();
 }
 
-// Guard de ejecución: solo ejecutar main cuando se invoca directamente
-// tsx runs scripts under CommonJS; require.main === module is true when invoked directly
-if (require.main === module) {
+// Guard de ejecución: solo ejecutar main cuando se invoca directamente.
+// No usar require.main: en proyectos con "type": "module" tsx ejecuta este
+// archivo como ESM y `require` no existe. argv[1] funciona en ambos modos
+// (y queda false cuando el spec importa este módulo).
+const isDirectRun = !!process.argv[1] && /extract-learnings\.(ts|js)$/.test(process.argv[1]);
+if (isDirectRun) {
   main();
 }

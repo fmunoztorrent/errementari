@@ -27,6 +27,10 @@ command moves installed harnesses between these versions.
 - **`ProjectContext` missing `usesSSG` field** — added to `types.ts` and all test fixtures.
 - **Local-install fallback hint printed literal `${...}`** — the `init` fallback message was a plain string instead of a template literal, so it showed `${errementariSource}`/`${opencodeDir}` verbatim. Now interpolated (also clears the Biome `noTemplateCurlyInString` warning).
 - **Claude Code edit enforcement was inert** — the generated `.claude/settings.json` hooks (`guard-edit`, `check-activation`, `sync-todos`) ran `node .opencode/pipeline/pipeline-cli.mjs`, but `init` never installed that file there (only the bash wrappers), so the hooks failed silently and never blocked edits. `init` now installs a `pipeline-cli.mjs` wrapper that resolves the plugin from the repo root **or** `.opencode/node_modules/` and delegates to it, so block exit codes (2) propagate. Run `errementari upgrade` to add it to existing installs.
+- **`upgrade` was broken for npm installs** — `upgrade` copies from the vendored `harness/` mirror, but `harness/` was missing from the published `files`, so `upgrade` only worked from a source checkout (e.g. the dogfooded repo), not for users who installed via npm. `harness/` is now part of the published package.
+- **Vendored `harness/` mirror had drifted from canonical sources** — 9 of 11 pipeline scripts (and several `scripts/`) were stale: older logic, Spanish strings, and `check.sh` lacked the `node` fallback when `python3` is absent. So `upgrade` installed *different* (worse) logic than `init`. Added `scripts/sync-harness.ts` + a CI `check:harness` guard that fails on drift, and re-synced every vendored copy to canonical.
+- **`pre-commit` hook errored on macOS** — it used `declare -A` (associative arrays, bash 4+), but macOS ships `/bin/bash` 3.2. Rewritten with a portable newline-delimited list.
+- **Dead code removed** — unused `_listFiles` in `init.ts` and a duplicated `console.log` in `render.ts`.
 
 ## [1.1.0] — 2026-06-10
 

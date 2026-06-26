@@ -10,9 +10,13 @@ opencode.json
 .errementari.json
 .claude/agents/
 .claude/skills/
+.claude/commands/
 .claude/AGENTS.md
 .claude/LEARNINGS.md
 .claude/settings.json
+.claude/settings.local.json
+# Harness scripts installed at the project root (extract-learnings, validate-*, …)
+/scripts/
 
 # Pipeline runtime state
 errementari/pipeline/coordination.json

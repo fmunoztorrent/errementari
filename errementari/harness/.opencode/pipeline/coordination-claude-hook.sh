@@ -1,13 +1,13 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Hook PreToolUse(Bash) de Claude Code → coordinación de sesiones.
+# Claude Code PreToolUse(Bash) hook → session coordination.
 #
-# Claude Code entrega el input del tool como JSON por stdin:
+# Claude Code provides the tool input as JSON on stdin:
 #   { "tool_name": "Bash", "tool_input": { "command": "..." }, ... }
 #
-# Extrae el comando, hace heartbeat de la sesión 'claude' y delega en
-# coordination.sh guard-git. Si guard-git devuelve 2, este hook devuelve 2 y
-# Claude Code BLOQUEA la ejecución del comando, mostrando stderr al modelo.
+# Extracts the command, heartbeats the 'claude' session and delegates to
+# coordination.sh guard-git. If guard-git returns 2, this hook returns 2 and
+# Claude Code BLOCKS the command execution, showing stderr to the model.
 # ─────────────────────────────────────────────────────────────────────────────
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,7 +22,7 @@ except Exception:
     pass' 2>/dev/null)"
 fi
 
-# Heartbeat (nunca bloquea)
+# Heartbeat (never blocks)
 bash "$DIR/coordination.sh" heartbeat claude >/dev/null 2>&1 || true
 
 [ -z "$cmd" ] && exit 0

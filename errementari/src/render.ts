@@ -360,8 +360,6 @@ export function init(targetRoot: string, ctx: ProjectContext, options?: InitOpti
 
   console.log(`  ✓ Copied ${pipelineMdFiles.length} pipeline .md files`);
 
-  console.log(`  ✓ Copied ${pipelineMdFiles.length} pipeline .md files`);
-
   // ── Coordination state file ────────────────────────────────────────────
   const coordinationPath = join(pipelineDir, "coordination.json");
   const coordinationContent = "{}\n";
