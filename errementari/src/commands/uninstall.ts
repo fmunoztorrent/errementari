@@ -78,6 +78,7 @@ export async function uninstallCommand(targetDir?: string, options?: { yes?: boo
     ".opencode/package-lock.json",
     ".opencode/pipeline/state.json",
     ".opencode/pipeline/close-pending.json",
+    ".opencode/pipeline/learnings-processed.json",
     ".opencode/pipeline/coordination.json",
   ]) {
     const path = join(target, extra);

@@ -3,6 +3,25 @@
 All notable changes to Errementari are documented here. The `errementari upgrade`
 command moves installed harnesses between these versions.
 
+## [Unreleased]
+
+### Added
+
+- **Local LLM learning summaries (opt-in)** — with `ERRE_SUMMARY_PROVIDER=ollama`, `extract-learnings` asks a local Ollama model (default `gpt-oss:20b`, `think: "low"`) for the one-line summary written into the learnings skill and AGENTS.md. Any failure falls back to the existing heuristic; output is sanitized to one line ≤ 120 chars without `|`; non-loopback servers need `ERRE_LLM_ALLOW_REMOTE=1`. New `scripts/llm-summary.ts`, configured through `ERRE_LLM_*` variables (see README). The default behaviour is unchanged.
+- **`pipeline-cli.mjs extract-learnings`** — the learnings extraction is now reachable from the Claude Code hook adapter, the same path opencode's `onClose` uses.
+
+### Changed
+
+- **Claude Code Stop hook** — the generated `.claude/settings.json` runs `node .opencode/pipeline/pipeline-cli.mjs extract-learnings` with `"async": true` and `"timeout": 180`, so a slow model never blocks the session. Run `errementari upgrade` to pick it up.
+- **Extraction child timeout** — 10 s for the heuristic, `ERRE_LLM_TIMEOUT_MS` + 30 s with Ollama (start-up + model cold load).
+- **CI covers `scripts/`** — `test` now also runs `scripts/*.spec.ts`, and `typecheck` checks `scripts/tsconfig.json`.
+
+### Fixed
+
+- **Learnings never extracted in freshly initialized Claude Code projects** — the old Stop hook called `scripts/extract-learnings.ts`, which `init` does not install; `2>/dev/null || true` hid the failure.
+- **Repeated Stop hooks promoted an entry to level 2 on a single close** — several Stop hooks inside the 5-minute `close-pending` window reprocessed the same entry; the second pass found its slug in *Lecciones recientes* and promoted it. The last processed entry is now recorded in `.opencode/pipeline/learnings-processed.json` (removed by `uninstall`) and skipped.
+- **`errementari extract-learnings` exited before the extraction finished** — it called `process.exit(0)` right after spawning the child; it now waits for it.
+
 ## [2.1.0] — 2026-06-26
 
 ### Added

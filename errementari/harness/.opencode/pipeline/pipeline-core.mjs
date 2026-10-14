@@ -255,38 +255,59 @@ export function writeClosePending(scopeName, state) {
 // ── Learnings extraction ─────────────────────────────────────────────────────
 // Spawns `npx -y tsx scripts/extract-learnings.ts` after a scope closes.
 // -y: npx must never prompt (non-interactive plugin/CI context).
-// Non-blocking; only logs warnings. Claude Code also has a Stop hook that does
-// this, so the CLI sync-todos path passes onClose=undefined to avoid double runs.
+// Only logs warnings. Claude Code runs this from its async Stop hook
+// (`pipeline-cli.mjs extract-learnings`), so the CLI sync-todos path passes
+// onClose=undefined to avoid double runs.
+
+// Child budget: the heuristic finishes well inside 10 s; with a local LLM add
+// npx/tsx start-up and the model's cold load on top of the request timeout.
+const HEURISTIC_TIMEOUT_MS = 10_000
+const DEFAULT_LLM_TIMEOUT_MS = 60_000
+const LLM_STARTUP_HEADROOM_MS = 30_000
+
+export function extractionTimeoutMs(env = process.env) {
+  if (env.ERRE_SUMMARY_PROVIDER !== "ollama") return HEURISTIC_TIMEOUT_MS
+  const llm = Number(env.ERRE_LLM_TIMEOUT_MS)
+  const llmTimeout = Number.isInteger(llm) && llm > 0 ? llm : DEFAULT_LLM_TIMEOUT_MS
+  return llmTimeout + LLM_STARTUP_HEADROOM_MS
+}
+
+// Resolves when the child exits (or right away when nothing is pending), so
+// short-lived callers can wait for it before calling process.exit().
 export function extractLearningsAfterClose() {
-  if (!existsSync(CLOSE_PENDING_PATH)) return
+  if (!existsSync(CLOSE_PENDING_PATH)) return Promise.resolve()
 
   try {
     const pendingData = JSON.parse(readFileSync(CLOSE_PENDING_PATH, "utf-8"))
     const completedAt = new Date(pendingData.completed_at).getTime()
     const fiveMinAgo = Date.now() - 5 * 60 * 1000
-    if (completedAt < fiveMinAgo) return // stale — already processed
+    if (completedAt < fiveMinAgo) return Promise.resolve() // stale — already processed
   } catch (e) {
-    return
+    return Promise.resolve()
   }
 
   const extractPath = resolveScript("extract-learnings.ts")
-  const child = spawn("npx", ["-y", "tsx", extractPath], {
-    cwd: REPO_ROOT,
-    timeout: 10_000,
-    stdio: ["ignore", "pipe", "pipe"],
-  })
+  return new Promise((resolve) => {
+    const child = spawn("npx", ["-y", "tsx", extractPath], {
+      cwd: REPO_ROOT,
+      timeout: extractionTimeoutMs(),
+      stdio: ["ignore", "pipe", "pipe"],
+    })
 
-  let stderr = ""
-  child.stderr?.on("data", (chunk) => {
-    stderr += chunk.toString()
-  })
-  child.on("error", (err) => {
-    console.warn(`[pipeline-core] Could not spawn extract-learnings.ts: ${err.message}`)
-  })
-  child.on("close", (code) => {
-    if (code !== 0) {
-      console.warn(`[pipeline-core] extract-learnings.ts exited with code ${code}:\n${stderr.trim()}`)
-    }
+    let stderr = ""
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.on("error", (err) => {
+      console.warn(`[pipeline-core] Could not spawn extract-learnings.ts: ${err.message}`)
+      resolve()
+    })
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.warn(`[pipeline-core] extract-learnings.ts exited with code ${code}:\n${stderr.trim()}`)
+      }
+      resolve()
+    })
   })
 }
 

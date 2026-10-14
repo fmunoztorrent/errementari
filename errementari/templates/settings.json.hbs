@@ -87,7 +87,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -f .opencode/pipeline/close-pending.json ] && command -v npx >/dev/null 2>&1 && npx -y tsx scripts/extract-learnings.ts 2>/dev/null || true"
+            "command": "node .opencode/pipeline/pipeline-cli.mjs extract-learnings",
+            "async": true,
+            "timeout": 180
           }
         ]
       }

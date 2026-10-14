@@ -34,8 +34,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx bin/errementari.js",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
+    "test": "tsx --test src/*.test.ts scripts/*.spec.ts",
     "lint": "biome check src",
     "format": "biome format --write src",
     "sync:harness": "tsx scripts/sync-harness.ts",
