@@ -315,8 +315,7 @@ function generateSummary(body: string): string {
       trimmed.startsWith("**Leccion**:")
     ) {
       return trimmed
-        .replace(/^\*\*Lecc[ió]n\*\*:\s*/i, "")
-        .replace(/^\*\*Leccion\*\*:\s*/, "")
+        .replace(/^\*\*Lecci[oó]n\*\*:\s*/i, "")
         .trim()
         .substring(0, 120);
     }

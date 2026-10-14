@@ -191,6 +191,40 @@ describe('extractAndPromote — Nivel 1 (1ª ocurrencia)', () => {
       'Debe tener sección Lecciones recientes'
     );
   });
+
+  it('debe quitar el prefijo **Lección**: del resumen en Lecciones recientes', () => {
+    // Arrange
+    writeFileSync(
+      env.learningsPath,
+      createLearningEntry('test-prefijo-leccion', 'architect', 'Validar rutas contra el controller')
+    );
+    writeSkillFile(env.skillsDir, 'architect', createSkillDoc('architect', [], []));
+    writeFileSync(env.agentsPath, createAgentsDoc([]));
+
+    // Act
+    extractAndPromote({
+      learningsPath: env.learningsPath,
+      skillsDir: env.skillsDir,
+      agentsPath: env.agentsPath,
+      maxRecent: 5,
+      dryRun: false,
+    });
+
+    // Assert
+    const updatedSkill = readFileSync(
+      join(env.skillsDir, 'architect-learnings', 'SKILL.md'),
+      'utf-8'
+    );
+    const line = updatedSkill
+      .split('\n')
+      .find((l) => l.startsWith('- ') && l.includes('test-prefijo-leccion'));
+    assert.ok(line, 'Debe existir la línea del slug en Lecciones recientes');
+    assert.ok(
+      line.includes('Validar rutas contra el controller'),
+      'El resumen debe contener el texto de la lección'
+    );
+    assert.ok(!line.includes('**Lección**:'), 'El resumen no debe incluir el prefijo **Lección**:');
+  });
 });
 
 describe('extractAndPromote — Nivel 2 (2ª ocurrencia)', () => {
