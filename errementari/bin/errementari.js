@@ -129,8 +129,9 @@ function cmdGuardBash() {
   process.exit(0)
 }
 
-function cmdExtractLearnings() {
-  extractLearningsAfterClose()
+async function cmdExtractLearnings() {
+  // Wait for the child: exiting right after spawn cut the extraction short.
+  await extractLearningsAfterClose()
   process.exit(0)
 }
 
@@ -271,7 +272,7 @@ if (!cmd || cliCommands.has(cmd)) {
       cmdGuardBash()
       break
     case "extract-learnings":
-      cmdExtractLearnings()
+      await cmdExtractLearnings()
       break
     default:
       // Unknown hook command — no-op

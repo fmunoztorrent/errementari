@@ -230,6 +230,32 @@ Most users only edit:
 
 Anything in `.opencode/pipeline/` is harness-owned. Edit only if you're sure; the next upgrade will respect your edits but you've taken responsibility for the divergence.
 
+### Learning summaries with a local LLM (optional)
+
+When a scope closes, `extract-learnings` writes a one-line summary of the last `.claude/LEARNINGS.md` entry into the agent's learnings skill (and into `.claude/AGENTS.md` at level 3). By default that summary is a heuristic: the `**Lección**:` line, cut at 120 characters. You can have a local model write it instead through [Ollama](https://ollama.com):
+
+```bash
+brew install ollama          # or the installer from ollama.com
+ollama serve                 # keep it running (or use the menu-bar app)
+ollama pull gpt-oss:20b      # ~13 GB, MXFP4
+export ERRE_SUMMARY_PROVIDER=ollama
+```
+
+The call uses Ollama's native `/api/chat` and never blocks your session (the Claude Code Stop hook is `async`). Any failure — Ollama not running, timeout, HTTP error, empty answer — falls back to the heuristic with a warning on stderr. The output is sanitized to a single line of at most 120 characters with no `|`, so it is safe inside the AGENTS.md table. Reprocessing the same entry is skipped (`.opencode/pipeline/learnings-processed.json`), so the model is called once per close.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ERRE_SUMMARY_PROVIDER` | `heuristic` | `ollama` turns the LLM on |
+| `ERRE_LLM_BASE_URL` | `http://127.0.0.1:11434` | Ollama server |
+| `ERRE_LLM_MODEL` | `gpt-oss:20b` | any model you pulled |
+| `ERRE_LLM_THINK` | `low` | reasoning effort: `low`, `medium`, `high`, `true`, `false` |
+| `ERRE_LLM_NUM_CTX` | `8192` | context window (Ollama's own default is 4096) |
+| `ERRE_LLM_KEEP_ALIVE` | `10m` | how long the model stays loaded after a call |
+| `ERRE_LLM_TIMEOUT_MS` | `60000` | request timeout; the extraction child gets 30 s extra |
+| `ERRE_LLM_ALLOW_REMOTE` | unset | `1` allows a non-loopback base URL — learnings then leave your machine |
+
+Measured on a MacBook Pro M5 Pro (24 GB): 9 s for the first call (8 s loading the model), under 1 s while it stays loaded, ~62 tokens/s, 12 GB of memory while loaded.
+
 ## Development
 
 Errementari is a pnpm workspace; the package lives in `errementari/`. Run scripts

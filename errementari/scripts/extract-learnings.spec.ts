@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 // ─── Import de la función a testear ────────────────────────────────────────
 // La función extractAndPromote será exportada desde extract-learnings.ts
 // En RED, este import fallará (la función aún no existe).
-import { extractAndPromote } from './extract-learnings';
+import { extractAndPromote, isAlreadyProcessed, markProcessed } from './extract-learnings';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -468,6 +468,107 @@ describe('extractAndPromote — Idempotencia', () => {
       occurrences,
       1,
       'Slug debe aparecer exactamente 1 vez (sin duplicar)'
+    );
+  });
+});
+
+describe('extractAndPromote — resumen externo (LLM)', () => {
+  let env: TempEnv;
+
+  beforeEach(() => {
+    env = createTempEnv();
+  });
+
+  afterEach(() => {
+    cleanupTempEnv(env);
+  });
+
+  it('usa options.summary en Lecciones recientes (nivel 1) en vez de la heurística', () => {
+    writeFileSync(
+      env.learningsPath,
+      createLearningEntry('llm-summary-n1', 'backend', 'Texto heurístico original')
+    );
+    writeSkillFile(env.skillsDir, 'backend', createSkillDoc('backend', [], []));
+    writeFileSync(env.agentsPath, createAgentsDoc([]));
+
+    extractAndPromote({
+      learningsPath: env.learningsPath,
+      skillsDir: env.skillsDir,
+      agentsPath: env.agentsPath,
+      dryRun: false,
+      summary: 'Resumen escrito por el modelo local.',
+    });
+
+    const updatedSkill = readFileSync(join(env.skillsDir, 'backend-learnings', 'SKILL.md'), 'utf-8');
+    assert.ok(updatedSkill.includes('llm-summary-n1 — Resumen escrito por el modelo local.'));
+    assert.ok(!updatedSkill.includes('Texto heurístico original'));
+  });
+
+  it('usa options.summary en la fila de AGENTS.md (nivel 3)', () => {
+    writeFileSync(
+      env.learningsPath,
+      createLearningEntry('llm-summary-n3', 'architect', 'Texto heurístico original')
+    );
+    writeSkillFile(
+      env.skillsDir,
+      'architect',
+      createSkillDoc('architect', ['- **llm-summary-n3** (x2, 2026-06-05) — Regla previa'], [])
+    );
+    writeFileSync(env.agentsPath, createAgentsDoc([]));
+
+    extractAndPromote({
+      learningsPath: env.learningsPath,
+      skillsDir: env.skillsDir,
+      agentsPath: env.agentsPath,
+      dryRun: false,
+      summary: 'Resumen del modelo para nivel 3.',
+    });
+
+    const updatedAgents = readFileSync(env.agentsPath, 'utf-8');
+    assert.ok(updatedAgents.includes('| Resumen del modelo para nivel 3. |'));
+    assert.ok(!updatedAgents.includes('Texto heurístico original'));
+  });
+});
+
+describe('marcador de entrada procesada', () => {
+  let env: TempEnv;
+
+  beforeEach(() => {
+    env = createTempEnv();
+  });
+
+  afterEach(() => {
+    cleanupTempEnv(env);
+  });
+
+  it('detecta la misma entrada después de marcarla y crea el directorio del marcador', () => {
+    const content = createLearningEntry('marker-1', 'qa', 'Lección uno');
+    const markerPath = join(env.dir, 'pipeline', 'learnings-processed.json');
+
+    assert.strictEqual(isAlreadyProcessed(content, markerPath), false);
+    markProcessed(content, markerPath);
+    assert.strictEqual(isAlreadyProcessed(content, markerPath), true);
+
+    const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
+    assert.strictEqual(marker.slug, 'marker-1');
+    assert.match(marker.hash, /^[0-9a-f]{64}$/);
+  });
+
+  it('una entrada nueva (aunque repita slug) no cuenta como procesada', () => {
+    const markerPath = join(env.dir, 'learnings-processed.json');
+    markProcessed(createLearningEntry('marker-2', 'qa', 'Primera vez'), markerPath);
+
+    const second = createLearningEntry('marker-2', 'qa', 'Primera vez') +
+      '\n' + createLearningEntry('marker-2', 'qa', 'Segunda ocurrencia distinta');
+    assert.strictEqual(isAlreadyProcessed(second, markerPath), false);
+  });
+
+  it('un marcador corrupto no bloquea el procesamiento', () => {
+    const markerPath = join(env.dir, 'learnings-processed.json');
+    writeFileSync(markerPath, '{no-json');
+    assert.strictEqual(
+      isAlreadyProcessed(createLearningEntry('marker-3', 'qa', 'x'), markerPath),
+      false
     );
   });
 });

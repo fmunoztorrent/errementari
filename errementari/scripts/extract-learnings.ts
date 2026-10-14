@@ -15,8 +15,10 @@
  */
 
 import { execSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { resolve } from "path";
+import { createHash } from "crypto";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { dirname, resolve } from "path";
+import { loadSummaryConfig, summarizeWithLlm } from "./llm-summary";
 
 // ── Config ───────────────────────────────────────────────────────────────
 
@@ -37,6 +39,9 @@ const REPO_ROOT = detectRepoRoot();
 const LEARNINGS_PATH = resolve(REPO_ROOT, ".claude", "LEARNINGS.md");
 const SKILLS_DIR = resolve(REPO_ROOT, ".claude", "skills");
 const AGENTS_PATH = resolve(REPO_ROOT, ".claude", "AGENTS.md");
+// Marca la última entrada procesada: varios Stop hooks dentro de la ventana de
+// close-pending no deben volver a llamar al LLM ni promover la entrada a nivel 2.
+const PROCESSED_MARKER_PATH = resolve(REPO_ROOT, ".opencode", "pipeline", "learnings-processed.json");
 const MAX_RECENT = 5;
 
 const VALID_AGENTS = new Set(["qa", "backend", "frontend", "architect"]);
@@ -77,6 +82,8 @@ export interface ExtractOptions {
   maxRecent?: number;
   /** Modo dry-run: no modifica archivos (default: false) */
   dryRun?: boolean;
+  /** Resumen ya calculado (p. ej. por el LLM); si falta se usa generateSummary() */
+  summary?: string;
 }
 
 // ── Parseo de LEARNINGS.md ───────────────────────────────────────────────
@@ -518,7 +525,7 @@ export function extractAndPromote(options: ExtractOptions = {}): void {
       console.log(`  → Removed from Reglas activas (promoted to level 3)`);
 
       // Generar summary desde la regla promovida o desde la entrada actual
-      const summary = generateSummary(entry.body);
+      const summary = options.summary ?? generateSummary(entry.body);
 
       // Agregar a AGENTS.md
       addToAgentsBlockingActionables(
@@ -537,7 +544,7 @@ export function extractAndPromote(options: ExtractOptions = {}): void {
     }
   } else {
     // ── Nivel 1: primera ocurrencia → agregar a Lecciones recientes ──
-    const summary = generateSummary(entry.body);
+    const summary = options.summary ?? generateSummary(entry.body);
     doc.leccionesRecientes.unshift({
       date: entry.date,
       slug: entry.slug,
@@ -578,10 +585,58 @@ export function extractAndPromote(options: ExtractOptions = {}): void {
   );
 }
 
+// ── Marcador de entrada procesada ────────────────────────────────────────
+
+function entryHash(learningsContent: string): string | null {
+  const entry = parseLastEntry(learningsContent);
+  return entry ? createHash("sha256").update(entry.fullBlock).digest("hex") : null;
+}
+
+export function isAlreadyProcessed(learningsContent: string, markerPath: string): boolean {
+  const hash = entryHash(learningsContent);
+  if (!hash || !existsSync(markerPath)) return false;
+  try {
+    return JSON.parse(readFileSync(markerPath, "utf-8")).hash === hash;
+  } catch {
+    return false; // marcador corrupto: procesar de nuevo
+  }
+}
+
+export function markProcessed(learningsContent: string, markerPath: string): void {
+  const entry = parseLastEntry(learningsContent);
+  if (!entry) return;
+  mkdirSync(dirname(markerPath), { recursive: true });
+  const marker = {
+    hash: createHash("sha256").update(entry.fullBlock).digest("hex"),
+    slug: entry.slug,
+    date: entry.date,
+    processed_at: new Date().toISOString(),
+  };
+  writeFileSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
+}
+
 // ── CLI entry point ──────────────────────────────────────────────────────
 
-function main(): void {
-  extractAndPromote();
+async function main(): Promise<void> {
+  // Sin LEARNINGS.md, extractAndPromote informa el error y sale con código 1.
+  const content = existsSync(LEARNINGS_PATH) ? readFileSync(LEARNINGS_PATH, "utf-8") : null;
+  const entry = content ? parseLastEntry(content) : null;
+
+  if (content && entry && isAlreadyProcessed(content, PROCESSED_MARKER_PATH)) {
+    console.log(
+      `[extract-learnings] Entry "${entry.slug}" (${entry.date}) already processed — nothing to do`
+    );
+    return;
+  }
+
+  // Solo vale la pena llamar al LLM si la entrada va a terminar en un skill.
+  const summary = entry && VALID_AGENTS.has(entry.agent)
+    ? await summarizeWithLlm(entry.body, loadSummaryConfig())
+    : null;
+
+  extractAndPromote({ summary: summary ?? undefined });
+
+  if (content && entry && !DRY_RUN) markProcessed(content, PROCESSED_MARKER_PATH);
 }
 
 // Guard de ejecución: solo ejecutar main cuando se invoca directamente.

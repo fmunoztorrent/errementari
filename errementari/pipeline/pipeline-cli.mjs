@@ -9,6 +9,7 @@
 //   PreToolUse  (Edit|Write|MultiEdit) → node .../pipeline-cli.mjs guard-edit
 //   PreToolUse  (TodoWrite)            → node .../pipeline-cli.mjs check-activation
 //   PostToolUse (TodoWrite)            → node .../pipeline-cli.mjs sync-todos
+//   Stop (async)                       → node .../pipeline-cli.mjs extract-learnings
 //
 // Protocol:
 //   - guard-edit:       exit 2 + stderr blocks the tool (reason shown to Claude);
@@ -24,6 +25,7 @@ import {
   updateStateFromTodos,
   checkScopeActivation,
   evaluateEdit,
+  extractLearningsAfterClose,
 } from "./pipeline-core.mjs"
 
 function readStdin() {
@@ -85,6 +87,13 @@ if (cmd === "guard-edit") {
 
   process.stderr.write(res.reason + "\n")
   process.exit(2) // block the tool; reason is fed back to Claude
+}
+
+if (cmd === "extract-learnings") {
+  // Claude Code Stop hook (async): same path as opencode's onClose. Wait for the
+  // child so a slow local model is not cut off when this process exits.
+  await extractLearningsAfterClose()
+  process.exit(0)
 }
 
 // Unknown command — no-op.

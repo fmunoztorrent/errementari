@@ -219,6 +219,33 @@ test("init renders hardcode-patterns.json with the project slug", () => {
   }
 });
 
+test("the Stop hook extracts learnings through pipeline-cli, asynchronously", () => {
+  const { root, cleanup } = makeTempProject();
+  try {
+    setupMonorepoFixture(root);
+    init(root, detect(root));
+
+    const settings = JSON.parse(readFileSync(join(root, ".claude", "settings.json"), "utf-8"));
+    type Hook = { command: string; async?: boolean; timeout?: number };
+    const stopHooks: Hook[] = (settings.hooks.Stop as Array<{ hooks: Hook[] }>).flatMap(
+      (m) => m.hooks,
+    );
+
+    const extract = stopHooks.find(
+      (h) => h.command === "node .opencode/pipeline/pipeline-cli.mjs extract-learnings",
+    );
+    assert.ok(extract, "Stop hook must call `pipeline-cli.mjs extract-learnings`");
+    assert.equal(extract.async, true, "a slow local model must not block the session");
+    assert.equal(extract.timeout, 180);
+    assert.ok(
+      stopHooks.every((h) => !h.command.includes("scripts/extract-learnings.ts")),
+      "init does not install scripts/, so no hook may call it directly",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test("every settings.json hook that runs `node .opencode/pipeline/<file>` is installed on disk", () => {
   const { root, cleanup } = makeTempProject();
   try {
