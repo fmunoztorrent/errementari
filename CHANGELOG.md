@@ -3,6 +3,12 @@
 All notable changes to Errementari are documented here. The `errementari upgrade`
 command moves installed harnesses between these versions.
 
+## [Unreleased]
+
+### Fixed
+
+- **Learning summaries kept the `**Lección**:` prefix** — `generateSummary()` in `scripts/extract-learnings.ts` stripped the prefix with `/^\*\*Lecc[ió]n\*\*:/`, but `[ió]` matches a single character while "Lección" has two (`ió`), so the accented form never matched and every "Lecciones recientes" summary began with `**Lección**: `, wasting 13 of its 120 characters. The regex is now `/^\*\*Lecci[oó]n\*\*:/i`, covering both spellings.
+
 ## [2.1.0] — 2026-06-26
 
 ### Added
